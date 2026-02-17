@@ -1,13 +1,16 @@
-import { Routes, Route } from "react-router-dom"
-import LoginPage from "../pages/auth/LoginPage"
-import DashboardPage from "../pages/dashboard/DashboardPage"
-import ProtectedRoute from "./ProtectedRoute"
+import { Routes, Route } from "react-router-dom";
+import DashboardPage from "../pages/dashboard/DashboardPage";
+import UpgradePage from "../pages/upgrade/UpgradePage";
+import LoginPage from "../pages/auth/LoginPage";
+import ProtectedRoute from "../components/ProtectedRoute";
 
-const AppRoutes = () => {
+export default function AppRoutes() {
   return (
     <Routes>
+      {/* Public */}
       <Route path="/login" element={<LoginPage />} />
 
+      {/* Protected */}
       <Route
         path="/"
         element={
@@ -16,8 +19,15 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-    </Routes>
-  )
-}
 
-export default AppRoutes
+      <Route
+        path="/upgrade"
+        element={
+          <ProtectedRoute>
+            <UpgradePage />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
+  );
+}

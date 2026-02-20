@@ -1,21 +1,17 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-interface ProtectedRouteProps {
+interface AdminRouteProps {
   children: React.ReactNode;
-  requirePro?: boolean;
 }
 
-const ProtectedRoute = ({
-  children,
-  requirePro = false,
-}: ProtectedRouteProps) => {
+export default function AdminRoute({ children }: AdminRouteProps) {
   const { user, loading } = useAuth();
 
   // Wait for auth resolution
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen">
+      <div className="flex items-center justify-center h-screen">
         Loading...
       </div>
     );
@@ -26,12 +22,10 @@ const ProtectedRoute = ({
     return <Navigate to="/login" replace />;
   }
 
-  // Pro feature guard
-  if (requirePro && user.plan !== "pro") {
-    return <Navigate to="/upgrade" replace />;
+  // Not admin
+  if (user.role !== "admin") {
+    return <Navigate to="/forbidden" replace />;
   }
 
   return <>{children}</>;
-};
-
-export default ProtectedRoute;
+}

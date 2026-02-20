@@ -1,14 +1,27 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+
+import AppLayout from "../components/layout/AppLayout";
 
 import DashboardPage from "../pages/dashboard/DashboardPage";
-import UpgradePage from "../pages/upgrade/UpgradePage";
-import LoginPage from "../pages/auth/LoginPage";
-import RegisterPage from "../pages/auth/RegisterPage";
 import ReportsListPage from "../pages/reports/ReportsListPage";
 import ReportDetailPage from "../pages/reports/ReportDetailPage";
+import UpgradePage from "../pages/upgrade/UpgradePage";
+import BillingPage from "../pages/billing/BillingPage";
+import SettingsPage from "../pages/settings/SettingsPage";
+
+import AdminDashboard from "../pages/admin/AdminDashboard";
+import AdminUsersPage from "../pages/admin/AdminUsersPage";
+
+import LoginPage from "../pages/auth/LoginPage";
+import RegisterPage from "../pages/auth/RegisterPage";
+
+import NotFoundPage from "../pages/errors/NotFoundPage";
+import ForbiddenPage from "../pages/errors/ForbiddenPage";
 
 import ProtectedRoute from "../components/ProtectedRoute";
-import { useAuth } from "../context/AuthContext";
+import AdminRoute from "./AdminRoute";
+import PlanRoute from "./PlanRoute";
 
 export default function AppRoutes() {
   const { user } = useAuth();
@@ -16,83 +29,71 @@ export default function AppRoutes() {
   return (
     <Routes>
 
-      {/* ========================= */}
-      {/* Public Routes */}
-      {/* ========================= */}
-
+      {/* PUBLIC ROUTES */}
       <Route
         path="/login"
         element={
-          user ? (
-            <Navigate to="/dashboard" replace />
-          ) : (
-            <LoginPage />
-          )
+          user ? <Navigate to="/dashboard" replace /> : <LoginPage />
         }
       />
 
       <Route
         path="/register"
         element={
-          user ? (
-            <Navigate to="/dashboard" replace />
-          ) : (
-            <RegisterPage />
-          )
+          user ? <Navigate to="/dashboard" replace /> : <RegisterPage />
         }
       />
 
-      {/* ========================= */}
-      {/* Protected Routes */}
-      {/* ========================= */}
-
+      {/* PROTECTED ROUTES WITH LAYOUT */}
       <Route
-        path="/dashboard"
+        path="/"
         element={
           <ProtectedRoute>
-            <DashboardPage />
+            <AppLayout />
           </ProtectedRoute>
         }
-      />
+      >
 
-      <Route
-        path="/reports"
-        element={
-          <ProtectedRoute>
-            <ReportsListPage />
-          </ProtectedRoute>
-        }
-      />
+        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="reports" element={<ReportsListPage />} />
+        <Route path="reports/:id" element={<ReportDetailPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="upgrade" element={<UpgradePage />} />
 
-      <Route
-        path="/reports/:id"
-        element={
-          <ProtectedRoute>
-            <ReportDetailPage />
-          </ProtectedRoute>
-        }
-      />
+        {/* PRO PLAN */}
+        <Route
+          path="billing"
+          element={
+            <PlanRoute>
+              <BillingPage />
+            </PlanRoute>
+          }
+        />
 
-      <Route
-        path="/upgrade"
-        element={
-          <ProtectedRoute>
-            <UpgradePage />
-          </ProtectedRoute>
-        }
-      />
+        {/* ADMIN */}
+        <Route
+          path="admin"
+          element={
+            <AdminRoute>
+              <AdminDashboard />
+            </AdminRoute>
+          }
+        />
 
-      {/* ========================= */}
-      {/* Root Redirect */}
-      {/* ========================= */}
+        <Route
+          path="admin/users"
+          element={
+            <AdminRoute>
+              <AdminUsersPage />
+            </AdminRoute>
+          }
+        />
 
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      </Route>
 
-      {/* ========================= */}
-      {/* Fallback */}
-      {/* ========================= */}
-
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      {/* ERROR ROUTES */}
+      <Route path="/forbidden" element={<ForbiddenPage />} />
+      <Route path="*" element={<NotFoundPage />} />
 
     </Routes>
   );

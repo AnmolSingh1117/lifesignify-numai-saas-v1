@@ -1,14 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, OperationalError
+import time
 
 from app.db.session import engine, Base
 from app.db import models  # ensures models are registered
 
 from app.modules.users.router import router as users_router
 from app.modules.reports.router import router as reports_router
-from app.modules.billing.router import router as billing_router
 from app.modules.payments.router import router as payments_router
 from app.modules.admin.router import router as admin_router
 
@@ -39,10 +39,24 @@ app.add_middleware(
 
 
 # =====================================================
-# CREATE TABLES (Dev Only — not recommended for Prod)
+# DATABASE STARTUP RETRY (Docker-Safe)
 # =====================================================
 
-Base.metadata.create_all(bind=engine)
+@app.on_event("startup")
+def startup_event():
+    MAX_RETRIES = 10
+    RETRY_DELAY = 3
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            Base.metadata.create_all(bind=engine)
+            print("✅ Database connected successfully.")
+            return
+        except OperationalError:
+            print(f"⏳ Database not ready. Retry {attempt + 1}/{MAX_RETRIES}...")
+            time.sleep(RETRY_DELAY)
+
+    raise Exception("❌ Could not connect to database after multiple attempts.")
 
 
 # =====================================================
@@ -51,7 +65,6 @@ Base.metadata.create_all(bind=engine)
 
 app.include_router(users_router, prefix="/api/users", tags=["Users"])
 app.include_router(reports_router, prefix="/api/reports", tags=["Reports"])
-app.include_router(billing_router, prefix="/api/billing", tags=["Billing"])
 app.include_router(payments_router, prefix="/api/payments", tags=["Payments"])
 app.include_router(admin_router)
 

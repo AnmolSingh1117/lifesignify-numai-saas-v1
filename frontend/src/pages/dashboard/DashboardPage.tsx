@@ -1,167 +1,167 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import API from "../../services/api";
-import {
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-} from "recharts";
+import { useAuth } from "../../context/AuthContext";
+import toast from "react-hot-toast";
+
+interface Report {
+  id: number;
+  created_at: string;
+  executive_dashboard?: {
+    life_stability_index?: number;
+  };
+  risk_analysis?: string;
+}
 
 export default function DashboardPage() {
-  const [reports, setReports] = useState<any[]>([]);
-  const [latestReport, setLatestReport] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetchReports();
-  }, []);
+  const { user } = useAuth();
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
 
   const fetchReports = async () => {
     try {
       const res = await API.get("/reports/");
       setReports(res.data);
-      if (res.data.length > 0) {
-        setLatestReport(res.data[res.data.length - 1]);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const generateReport = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      await API.post("/reports/generate-ai-report", {});
-      await fetchReports();
-    } catch (err: any) {
-      if (err.response?.status === 403) {
-        setError("Upgrade to Pro to generate AI reports 🚀");
-      } else {
-        setError("Something went wrong");
-      }
+    } catch {
+      toast.error("Failed to fetch reports");
     } finally {
       setLoading(false);
     }
   };
 
-  const downloadPDF = async (reportId: number) => {
-    const res = await API.get(`/reports/${reportId}/download`, {
-      responseType: "blob",
-    });
+  useEffect(() => {
+    fetchReports();
+  }, []);
 
-    const url = window.URL.createObjectURL(new Blob([res.data]));
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "LifeSignify_Report.pdf");
-    document.body.appendChild(link);
-    link.click();
+  const handleGenerateReport = async () => {
+    if (generating) return;
+
+    setGenerating(true);
+    const loadingToast = toast.loading("Generating AI report...");
+
+    try {
+      await API.post("/reports/generate-ai-report", {
+        identity: {
+          full_name: user?.email || "Test User",
+          date_of_birth: "01/01/1990", // DD/MM/YYYY REQUIRED
+          gender: "male",
+          country_of_residence: "India"
+        },
+        birth_details: {
+          date_of_birth: "01/01/1990",
+          time_of_birth: "10:30 AM", // MUST include AM/PM
+          birthplace_city: "Mumbai",
+          birthplace_country: "India"
+        },
+        focus: {
+          life_focus: "general_alignment"
+        }
+      });
+
+      toast.success("Report generated successfully 🚀", {
+        id: loadingToast
+      });
+
+      await fetchReports();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.detail || "Report generation failed",
+        { id: loadingToast }
+      );
+    } finally {
+      setGenerating(false);
+    }
   };
 
-  const dashboard = latestReport?.content?.executive_dashboard;
-
-  const radarData = dashboard
-    ? [
-        { subject: "Life", value: dashboard.life_stability_index },
-        { subject: "Finance", value: dashboard.financial_discipline_index },
-        { subject: "Dharma", value: dashboard.dharma_alignment_score },
-        { subject: "Clarity", value: dashboard.decision_clarity_score },
-        { subject: "Emotion", value: dashboard.emotional_regulation_index },
-      ]
-    : [];
+  const latestReport = reports[0];
 
   return (
-    <div className="space-y-8">
+    <div className="min-h-screen bg-gray-950 text-white p-8 space-y-10">
+
       {/* Header */}
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold text-indigo-400">
-          Intelligence Overview
-        </h2>
+        <div>
+          <h1 className="text-3xl font-bold">
+            Welcome, {user?.email}
+          </h1>
+          <p className="text-gray-400 mt-1">
+            Your Life Intelligence Dashboard
+          </p>
+        </div>
 
-        <button
-          onClick={generateReport}
-          disabled={loading}
-          className="bg-indigo-600 hover:bg-indigo-700 px-6 py-2 rounded-lg"
-        >
-          {loading ? "Generating..." : "Generate AI Report"}
-        </button>
+        <PlanBadge isPro={user?.plan === "pro"} />
       </div>
 
-      {error && (
-        <div className="bg-red-900/40 text-red-400 p-4 rounded-lg">
-          {error}
-        </div>
-      )}
+      {/* Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-      {!latestReport && (
-        <div className="text-gray-400 text-lg">
-          No reports yet. Generate your first AI report.
-        </div>
-      )}
+        <MetricCard
+          label="Total Reports"
+          value={loading ? "..." : reports.length}
+        />
 
-      {latestReport && (
-        <>
-          {/* Cards */}
-          <div className="grid grid-cols-3 gap-6">
-            <Card title="Life Stability" value={dashboard?.life_stability_index} />
-            <Card title="Financial Discipline" value={dashboard?.financial_discipline_index} />
-            <Card title="Dharma Alignment" value={dashboard?.dharma_alignment_score} />
-          </div>
+        <MetricCard
+          label="Latest Stability Score"
+          value={
+            latestReport?.executive_dashboard?.life_stability_index ?? "--"
+          }
+        />
 
-          {/* Radar Chart */}
-          <div className="bg-[#1e293b] p-6 rounded-xl">
-            <RadarChart outerRadius={150} width={500} height={400} data={radarData}>
-              <PolarGrid />
-              <PolarAngleAxis dataKey="subject" />
-              <PolarRadiusAxis angle={30} domain={[0, 100]} />
-              <Radar
-                name="Score"
-                dataKey="value"
-                stroke="#6366f1"
-                fill="#6366f1"
-                fillOpacity={0.6}
-              />
-            </RadarChart>
-          </div>
+        <MetricCard
+          label="Latest Risk"
+          value={latestReport?.risk_analysis ?? "--"}
+        />
+      </div>
 
-          {/* Reports List */}
-          <div className="bg-[#0f172a] p-6 rounded-xl">
-            <h3 className="text-xl font-semibold mb-4 text-indigo-300">
-              Previous Reports
-            </h3>
+      {/* Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-            <div className="space-y-3">
-              {reports.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex justify-between bg-[#1e293b] p-4 rounded-lg"
-                >
-                  <span>Report #{r.id}</span>
-                  <button
-                    onClick={() => downloadPDF(r.id)}
-                    className="text-indigo-400 hover:underline"
-                  >
-                    Download PDF
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
+        <button
+          onClick={handleGenerateReport}
+          disabled={generating}
+          className="bg-indigo-600 hover:bg-indigo-500 p-6 rounded-xl font-semibold transition disabled:opacity-50"
+        >
+          {generating ? "Generating..." : "Generate AI Report"}
+        </button>
+
+        <Link
+          to="/reports"
+          className="bg-indigo-600 hover:bg-indigo-500 p-6 rounded-xl font-semibold text-center"
+        >
+          View All Reports
+        </Link>
+
+        {user?.plan !== "pro" && (
+          <Link
+            to="/upgrade"
+            className="bg-emerald-600 hover:bg-emerald-500 p-6 rounded-xl font-semibold text-center"
+          >
+            Upgrade to Pro
+          </Link>
+        )}
+      </div>
     </div>
   );
 }
 
-function Card({ title, value }: any) {
+function MetricCard({ label, value }: { label: string; value: any }) {
   return (
-    <div className="bg-[#1e293b] p-6 rounded-xl">
-      <h3 className="text-sm text-gray-400">{title}</h3>
-      <p className="text-3xl font-bold mt-2 text-emerald-400">
-        {value ?? "--"}
-      </p>
+    <div className="bg-gray-900 p-6 rounded-xl shadow-md">
+      <p className="text-sm text-gray-400">{label}</p>
+      <p className="text-3xl font-bold mt-2">{value}</p>
+    </div>
+  );
+}
+
+function PlanBadge({ isPro }: { isPro?: boolean }) {
+  return (
+    <div
+      className={`px-4 py-2 rounded-full text-sm font-semibold ${
+        isPro ? "bg-emerald-600" : "bg-gray-700"
+      }`}
+    >
+      {isPro ? "PRO PLAN" : "FREE PLAN"}
     </div>
   );
 }

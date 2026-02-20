@@ -22,7 +22,6 @@ def create_user(
     organization_name: str
 ):
     try:
-        # 1️⃣ Email must be globally unique (ignore soft deleted users)
         if (
             db.query(User)
             .filter(User.email == email, User.is_deleted == False)
@@ -30,7 +29,6 @@ def create_user(
         ):
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        # 2️⃣ Check if organization exists (ignore soft deleted orgs)
         organization = (
             db.query(Organization)
             .filter(
@@ -42,7 +40,6 @@ def create_user(
 
         is_new_org = False
 
-        # 3️⃣ Create organization if not exists
         if not organization:
             organization = Organization(
                 name=organization_name,
@@ -52,10 +49,8 @@ def create_user(
             db.flush()
             is_new_org = True
 
-        # 4️⃣ First user in org = admin
         role = "admin" if is_new_org else "user"
 
-        # 5️⃣ Create user
         user = User(
             email=email,
             password=hash_password(password),
@@ -67,7 +62,6 @@ def create_user(
         db.commit()
         db.refresh(user)
 
-        # 🔥 Audit log
         log_action(
             db=db,
             user_id=user.id,
@@ -116,7 +110,7 @@ def authenticate_user(db: Session, email: str, password: str):
 
 
 # =====================================================
-# LOGIN (JWT contains tenant_id + role + plan)
+# LOGIN (JWT contains tenant_id + role ONLY)
 # =====================================================
 def login_user(db: Session, email: str, password: str):
 
@@ -137,16 +131,15 @@ def login_user(db: Session, email: str, password: str):
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
 
+    # ✅ Removed plan from JWT
     token = create_access_token(
         {
             "sub": str(user.id),
             "tenant_id": user.tenant_id,
             "role": user.role,
-            "plan": organization.plan,
         }
     )
 
-    # 🔥 Audit login
     log_action(
         db=db,
         user_id=user.id,
@@ -187,7 +180,6 @@ def update_organization_plan(
     db.commit()
     db.refresh(organization)
 
-    # 🔥 Audit plan update
     log_action(
         db=db,
         user_id=current_user.id,

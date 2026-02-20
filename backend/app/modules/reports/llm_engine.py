@@ -1,11 +1,11 @@
-from openai import OpenAI
-from app.core.llm_config import LLM_MODEL, LLM_TEMPERATURE, LLM_MAX_TOKENS
-import os
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from typing import Dict, Any
+from app.core.llm_config import azure_client, DEPLOYMENT_NAME
 
 
-def generate_ai_narrative(flat_data: dict, scores: dict) -> dict:
+def generate_ai_narrative(
+    flat_data: Dict[str, Any],
+    scores: Dict[str, Any]
+) -> Dict[str, Any]:
 
     prompt = f"""
 You are an elite behavioral intelligence system.
@@ -27,18 +27,31 @@ Generate:
 Be precise. Avoid fluff. Keep it structured.
 """
 
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": "You are a strategic behavioral intelligence analyst."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=LLM_TEMPERATURE,
-        max_tokens=LLM_MAX_TOKENS,
-    )
+    try:
+        response = azure_client.chat.completions.create(
+            model=DEPLOYMENT_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a strategic behavioral intelligence analyst."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.7,
+            max_tokens=1500,
+        )
 
-    text = response.choices[0].message.content
+        text = response.choices[0].message.content
 
-    return {
-        "ai_full_narrative": text
-    }
+        return {
+            "ai_full_narrative": text
+        }
+
+    except Exception as e:
+        return {
+            "ai_full_narrative": "AI narrative generation temporarily unavailable.",
+            "error": str(e)
+        }

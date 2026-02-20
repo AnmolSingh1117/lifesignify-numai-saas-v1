@@ -2,9 +2,13 @@ version: "3.9"
 
 services:
 
+  # ==========================================
+  # PostgreSQL Database
+  # ==========================================
   db:
     image: postgres:15
     container_name: lsn_db
+    restart: always
     environment:
       POSTGRES_USER: lsn_user
       POSTGRES_PASSWORD: lsn_password
@@ -14,9 +18,16 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+
+  # ==========================================
+  # FastAPI Backend
+  # ==========================================
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: lsn_backend
+    restart: always
     depends_on:
       - db
     ports:
@@ -25,6 +36,7 @@ services:
       - .env
     volumes:
       - ./backend:/app
+
 
 volumes:
   postgres_data:

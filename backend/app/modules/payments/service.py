@@ -1,8 +1,15 @@
 from sqlalchemy.orm import Session
-from app.db.models import Payment, User
+from fastapi import HTTPException
+from app.db.models import Payment, User, Subscription, Organization
 from app.core.payment_config import razorpay_client
 from datetime import datetime
+import hmac
+import hashlib
 
+
+# =====================================================
+# CREATE RAZORPAY ORDER
+# =====================================================
 def create_payment_order(db: Session, current_user: User):
 
     amount = 49900  # ₹499 in paise
@@ -30,43 +37,124 @@ def create_payment_order(db: Session, current_user: User):
     return {
         "order_id": order["id"],
         "amount": amount,
-        "key": razorpay_client.auth[0]
+        "key": razorpay_client.auth[0]  # Key ID
     }
 
-import hmac
-import hashlib
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-from app.db.models import User
 
-
+# =====================================================
+# VERIFY PAYMENT SIGNATURE + ACTIVATE SUBSCRIPTION
+# =====================================================
 def verify_payment_signature(
     db: Session,
     current_user: User,
     razorpay_order_id: str,
     razorpay_payment_id: str,
     razorpay_signature: str,
-    razorpay_secret: str
 ):
-    """
-    Verify Razorpay signature to confirm payment authenticity.
-    """
+
+    print("---------- VERIFY START ----------")
+    print("Order ID:", razorpay_order_id)
+    print("Payment ID:", razorpay_payment_id)
+    print("Signature:", razorpay_signature)
 
     try:
+        # =====================================================
+        # Get Secret From Razorpay Client
+        # =====================================================
+        razorpay_secret = razorpay_client.auth[1]
+
+        if not razorpay_secret:
+            raise Exception("Razorpay secret not configured")
+
+        print("Secret Loaded:", razorpay_secret)
+
+        # =====================================================
+        # Generate Signature
+        # =====================================================
         generated_signature = hmac.new(
-            bytes(razorpay_secret, 'utf-8'),
-            bytes(f"{razorpay_order_id}|{razorpay_payment_id}", 'utf-8'),
+            razorpay_secret.encode("utf-8"),
+            f"{razorpay_order_id}|{razorpay_payment_id}".encode("utf-8"),
             hashlib.sha256
         ).hexdigest()
 
-        if generated_signature != razorpay_signature:
-            raise HTTPException(status_code=400, detail="Invalid payment signature")
+        print("Generated Signature:", generated_signature)
 
-        # ✅ Upgrade user subscription
-        current_user.is_premium = True
+        # =====================================================
+        # Validate Signature
+        # =====================================================
+        if generated_signature != razorpay_signature:
+            raise Exception("Signature mismatch")
+
+        print("✅ Signature verified")
+
+        # =====================================================
+        # Validate Payment Record Exists
+        # =====================================================
+        payment = (
+            db.query(Payment)
+            .filter(Payment.razorpay_order_id == razorpay_order_id)
+            .first()
+        )
+
+        print("Payment Found:", payment is not None)
+
+        if not payment:
+            raise Exception("Payment order not found in DB")
+
+        # Prevent duplicate activation
+        if payment.status == "paid":
+            print("Payment already verified")
+            return {
+                "message": "Payment already verified.",
+                "plan": "pro"
+            }
+
+        payment.status = "paid"
+        payment.razorpay_payment_id = razorpay_payment_id
+
+        # =====================================================
+        # Activate Subscription (Aligned With Your Model)
+        # =====================================================
+        subscription = (
+            db.query(Subscription)
+            .filter(Subscription.user_id == current_user.id)
+            .first()
+        )
+
+        if subscription:
+            subscription.is_active = True
+        else:
+            subscription = Subscription(
+                user_id=current_user.id,
+                is_active=True
+            )
+            db.add(subscription)
+
+        # =====================================================
+        # Update Organization Plan
+        # =====================================================
+        organization = (
+            db.query(Organization)
+            .filter(Organization.id == current_user.tenant_id)
+            .first()
+        )
+
+        if organization:
+            organization.plan = "pro"
+
         db.commit()
 
-        return {"message": "Payment verified. Subscription activated."}
+        print("🎉 Subscription activated successfully")
+        print("---------- VERIFY SUCCESS ----------")
+
+        return {
+            "message": "Payment verified. Subscription activated.",
+            "plan": "pro"
+        }
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print("🔥 VERIFY ERROR:", str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )

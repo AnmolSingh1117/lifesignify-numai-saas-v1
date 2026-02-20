@@ -4,39 +4,42 @@ from app.modules.reports.llm_engine import generate_ai_narrative
 
 
 # =====================================================
-# INPUT FLATTENER
+# SAFE INPUT FLATTENER
 # =====================================================
 def flatten_input(data: Dict[str, Any]) -> Dict[str, Any]:
     flat = {}
 
+    # Defensive fallback (very important)
+    financial = data.get("financial") or {}
+    career = data.get("career") or {}
+    emotional = data.get("emotional") or {}
+    focus = data.get("focus") or {}
+    life_events = data.get("life_events") or {}
+
     # Financial
-    financial = data.get("financial", {})
     flat["monthly_income"] = financial.get("monthly_income", 0)
     flat["savings_ratio"] = financial.get("savings_ratio", 0)
     flat["debt_ratio"] = financial.get("debt_ratio", 0)
     flat["risk_tolerance"] = financial.get("risk_tolerance", "low")
 
     # Career
-    career = data.get("career", {})
     flat["industry"] = career.get("industry", "")
     flat["role"] = career.get("role", "employee")
     flat["years_experience"] = career.get("years_experience", 0)
     flat["stress_level"] = career.get("stress_level", 5)
 
     # Emotional
-    emotional = data.get("emotional", {})
     flat["anxiety"] = emotional.get("anxiety_level", 5)
     flat["decision_confusion"] = emotional.get("decision_confusion", 5)
     flat["impulse_control"] = emotional.get("impulse_control", 5)
     flat["emotional_stability"] = emotional.get("emotional_stability", 5)
 
     # Focus
-    focus = data.get("focus", {})
     flat["life_focus"] = focus.get("life_focus", "general_alignment")
 
     # Setbacks
-    life_events = data.get("life_events", {})
-    flat["major_setbacks"] = len(life_events.get("setback_events_years", []))
+    setbacks = life_events.get("setback_events_years") or []
+    flat["major_setbacks"] = len(setbacks)
 
     return flat
 
@@ -144,14 +147,13 @@ def build_disclaimer(scores: Dict[str, int]) -> Dict[str, Any]:
 
 
 # =====================================================
-# MASTER REPORT GENERATOR (Azure OpenAI Ready)
+# MASTER REPORT GENERATOR
 # =====================================================
 def generate_life_signify_report(request_data: Dict[str, Any]) -> Dict[str, Any]:
 
     flat_data = flatten_input(request_data)
     scores = generate_score_summary(flat_data)
 
-    # GPT Narrative Layer (Azure OpenAI via llm_engine)
     try:
         ai_narrative = generate_ai_narrative(flat_data, scores)
     except Exception:

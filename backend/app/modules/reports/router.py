@@ -1,5 +1,9 @@
-from fastapi import APIRouter, Depends
+# app/modules/reports/router.py
+
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
+from typing import Optional, List
+from fastapi.responses import StreamingResponse
 
 from app.db.dependencies import get_db
 from app.db.models import User
@@ -9,6 +13,9 @@ from app.modules.reports.schemas import (
     ReportCreate,
     ReportUpdate,
     ReportResponse,
+    ReportMetricsResponse,
+    BulkDeleteRequest,
+    BulkDeleteResponse,
 )
 from app.modules.reports.intake_schema import LifeSignifyRequest
 
@@ -23,6 +30,8 @@ from app.modules.reports.service import (
     restore_report,
     hard_delete_report,
     export_report_pdf,
+    get_report_metrics,
+    bulk_delete_reports,
 )
 
 router = APIRouter(tags=["Reports"])
@@ -37,11 +46,14 @@ def create_new_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Create a manually crafted report
+    """
     return create_report(
         db=db,
         current_user=current_user,
         title=report.title,
-        content=report.content,
+        content=report.content.dict() if hasattr(report.content, "dict") else report.content,
     )
 
 
@@ -51,25 +63,69 @@ def create_new_report(
 @router.post("/generate-ai-report", response_model=ReportResponse)
 def generate_ai_report(
     request: LifeSignifyRequest,
+    plan_override: Optional[str] = Query(None, description="Override plan for testing"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Generate an AI-powered numerology report
+    - Respects plan limits
+    - Enriches content based on plan tier
+    - Returns complete report structure
+    """
+    intake_data = request.model_dump()
+    if plan_override:
+        intake_data["plan_override"] = plan_override
+    
     return generate_ai_report_service(
         db=db,
         current_user=current_user,
-        intake_data=request.model_dump(),
+        intake_data=intake_data,
     )
 
 
 # =====================================================
-# LIST REPORTS
+# LIST REPORTS (WITH PAGINATION)
 # =====================================================
-@router.get("/", response_model=list[ReportResponse])
+@router.get("/", response_model=List[ReportResponse])
 def list_reports(
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
+    include_deleted: bool = Query(False, description="Include soft-deleted reports (admin only)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_reports(db=db, current_user=current_user)
+    """
+    List all reports for current user with pagination
+    """
+    # Only admins can see deleted reports
+    if include_deleted and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    return get_reports(
+        db=db, 
+        current_user=current_user,
+        skip=skip,
+        limit=limit,
+        include_deleted=include_deleted,
+    )
+
+
+# =====================================================
+# GET REPORT METRICS
+# =====================================================
+@router.get("/metrics/usage", response_model=ReportMetricsResponse)
+def get_usage_metrics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get report usage metrics for current user
+    - Total reports
+    - Monthly usage
+    - Remaining credits
+    """
+    return get_report_metrics(db=db, current_user=current_user)
 
 
 # =====================================================
@@ -78,10 +134,23 @@ def list_reports(
 @router.get("/{report_id}", response_model=ReportResponse)
 def get_single_report(
     report_id: int,
+    include_deleted: bool = Query(False, description="Include if deleted (admin only)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_report(db=db, current_user=current_user, report_id=report_id)
+    """
+    Get a single report by ID
+    """
+    # Only admins can see deleted reports
+    if include_deleted and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    return get_report(
+        db=db, 
+        current_user=current_user, 
+        report_id=report_id,
+        include_deleted=include_deleted,
+    )
 
 
 # =====================================================
@@ -93,6 +162,9 @@ def fetch_radar_data(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Get radar chart data for visualization
+    """
     return get_radar_data(db=db, current_user=current_user, report_id=report_id)
 
 
@@ -106,40 +178,84 @@ def update_existing_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Update an existing report
+    """
     return update_report(
         db=db,
         current_user=current_user,
         report_id=report_id,
         title=report.title,
-        content=report.content,
+        content=report.content.dict() if hasattr(report.content, "dict") else report.content,
     )
 
 
 # =====================================================
-# SOFT DELETE (ADMIN ONLY)
+# SOFT DELETE (MOVE TO TRASH)
 # =====================================================
 @router.delete("/{report_id}")
 def delete_report(
     report_id: int,
+    permanent: bool = Query(False, description="Permanently delete instead of soft delete"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(admin_required),
+    current_user: User = Depends(get_current_user),  # Changed to regular user
 ):
-    return soft_delete_report(
+    """
+    Move report to trash (soft delete)
+    Regular users can soft delete their own reports
+    """
+    # Regular users can only soft delete
+    if permanent and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required for permanent deletion")
+    
+    if permanent:
+        return hard_delete_report(
+            db=db,
+            current_user=current_user,
+            report_id=report_id,
+        )
+    else:
+        return soft_delete_report(
+            db=db,
+            current_user=current_user,
+            report_id=report_id,
+        )
+
+
+# =====================================================
+# BULK DELETE REPORTS
+# =====================================================
+@router.post("/bulk-delete", response_model=BulkDeleteResponse)
+def bulk_delete(
+    request: BulkDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_required),  # Admin only
+):
+    """
+    Bulk delete multiple reports (admin only)
+    - Can soft delete or permanently delete
+    """
+    return bulk_delete_reports(
         db=db,
         current_user=current_user,
-        report_id=report_id,
+        report_ids=request.report_ids,
+        permanent=request.permanent,
     )
 
 
 # =====================================================
-# RESTORE REPORT (ADMIN ONLY)
+# RESTORE REPORT (FROM TRASH)
 # =====================================================
-@router.put("/{report_id}/restore")
+@router.post("/{report_id}/restore")
 def restore_deleted_report(
     report_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(admin_required),
+    current_user: User = Depends(get_current_user),  # Changed to regular user
 ):
+    """
+    Restore a report from trash
+    Regular users can restore their own deleted reports
+    """
     return restore_report(
         db=db,
         current_user=current_user,
@@ -156,6 +272,9 @@ def permanently_delete_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(admin_required),
 ):
+    """
+    Permanently delete a report (admin only)
+    """
     return hard_delete_report(
         db=db,
         current_user=current_user,
@@ -169,11 +288,97 @@ def permanently_delete_report(
 @router.get("/{report_id}/export-pdf")
 def export_pdf(
     report_id: int,
+    watermark: bool = Query(False, description="Force watermark for preview"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Export report as premium PDF
+    - Generates 15-21 page beautifully formatted PDF
+    - Includes all sections: Executive Summary, Metrics, Archetype, Numerology, Planetary, etc.
+    - Uses all assets: deities, mandala, logos, fonts
+    
+    Returns:
+        StreamingResponse with PDF attachment
+    """
     return export_report_pdf(
         db=db,
         current_user=current_user,
         report_id=report_id,
+        watermark=watermark,
+    )
+
+
+# =====================================================
+# PREVIEW PDF (FOR BASIC PLAN)
+# =====================================================
+@router.get("/{report_id}/preview-pdf")
+def preview_pdf(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Preview report with watermark (for basic plan users)
+    Same as export but forces watermark
+    """
+    return export_report_pdf(
+        db=db,
+        current_user=current_user,
+        report_id=report_id,
+        watermark=True,  # Force watermark for preview
+    )
+
+
+# =====================================================
+# ADMIN: GET DELETED REPORTS
+# =====================================================
+@router.get("/admin/deleted", response_model=List[ReportResponse])
+def get_deleted_reports(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_required),
+):
+    """
+    Get all deleted reports (admin only)
+    """
+    return get_reports(
+        db=db,
+        current_user=current_user,
+        skip=skip,
+        limit=limit,
+        include_deleted=True,
+    )
+
+
+# =====================================================
+# ADMIN: EMPTY TRASH
+# =====================================================
+@router.delete("/admin/empty-trash")
+def empty_trash(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_required),
+):
+    """
+    Permanently delete all soft-deleted reports (admin only)
+    """
+    deleted_reports = get_reports(
+        db=db,
+        current_user=current_user,
+        skip=0,
+        limit=1000,
+        include_deleted=True,
+    )
+    
+    report_ids = [r.id for r in deleted_reports]
+    
+    if not report_ids:
+        return {"message": "Trash is already empty"}
+    
+    return bulk_delete_reports(
+        db=db,
+        current_user=current_user,
+        report_ids=report_ids,
+        permanent=True,
     )

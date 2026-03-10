@@ -16,21 +16,25 @@ export default function UpgradePage() {
   const [loading, setLoading] = useState(false);
 
   const handleUpgrade = async () => {
-    if (loading || user?.is_pro) return;
+    // ✅ FIXED: use organization.plan
+    if (loading || user?.organization?.plan === "pro") return;
 
     setLoading(true);
 
     try {
-      const orderRes = await API.post("/payments/create-order");
-      const { order_id, amount, currency } = orderRes.data;
+      const orderRes = await API.post("/payments/create-order", {
+        plan: "pro",
+      });
+
+      const { id, amount, currency } = orderRes.data;
 
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY, // 🔥 Replace with real key
+        key: import.meta.env.VITE_RAZORPAY_KEY,
         amount,
         currency,
         name: "Life Signify NumAI",
         description: "Pro Subscription",
-        order_id,
+        order_id: id,
 
         handler: async function (response: any) {
           const verifyToast = toast.loading("Verifying payment...");
@@ -42,7 +46,7 @@ export default function UpgradePage() {
               razorpay_signature: response.razorpay_signature,
             });
 
-            await refreshUser(); // ✅ refresh plan instantly
+            await refreshUser();
 
             toast.success("Subscription activated 🎉", {
               id: verifyToast,
@@ -51,7 +55,8 @@ export default function UpgradePage() {
             navigate("/dashboard");
           } catch (error: any) {
             toast.error(
-              error?.response?.data?.detail ||
+              error?.response?.data?.detail?.[0]?.msg ||
+                error?.response?.data?.detail ||
                 "Payment verification failed",
               { id: verifyToast }
             );
@@ -75,11 +80,15 @@ export default function UpgradePage() {
       rzp.open();
     } catch (error: any) {
       toast.error(
-        error?.response?.data?.detail || "Failed to create order"
+        error?.response?.data?.detail?.[0]?.msg ||
+          error?.response?.data?.detail ||
+          "Failed to create order"
       );
       setLoading(false);
     }
   };
+
+  const isPro = user?.organization?.plan === "pro";
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-8 flex items-center justify-center">
@@ -100,17 +109,17 @@ export default function UpgradePage() {
 
         <button
           onClick={handleUpgrade}
-          disabled={loading || user?.is_pro}
+          disabled={loading || isPro}
           className="bg-emerald-600 hover:bg-emerald-500 w-full py-3 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {user?.is_pro
+          {isPro
             ? "Already on Pro Plan"
             : loading
             ? "Processing..."
             : "Upgrade Now"}
         </button>
 
-        {user?.is_pro && (
+        {isPro && (
           <div className="text-emerald-400 font-semibold">
             🎉 You are already on Pro Plan
           </div>

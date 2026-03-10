@@ -1,23 +1,48 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import API from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
+import { useUsage } from "../../context/UsageContext";
 import toast from "react-hot-toast";
+import { motion } from "framer-motion";
+
+interface RiskAnalysis {
+  burnout_risk?: number;
+  overall_risk_level?: string;
+  karma_pressure_level?: string;
+  financial_stress_probability?: number;
+}
 
 interface Report {
   id: number;
   created_at: string;
-  executive_dashboard?: {
-    life_stability_index?: number;
+  content: {
+    executive_dashboard?: {
+      life_stability_index?: number;
+    };
+    risk_analysis?: RiskAnalysis;
   };
-  risk_analysis?: string;
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const { usage } = useUsage();
+  const navigate = useNavigate();
+
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
+
+  const currentPlan =
+    user?.subscription?.plan_name?.toLowerCase() || "none";
+
+  const isActive = user?.subscription?.is_active ?? false;
+
+  const used = usage?.reports_used || 0;
+  const limit = usage?.reports_limit || 0;
+  const remaining = Math.max(limit - used, 0);
+
+  const usagePercent =
+    limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
 
   const fetchReports = async () => {
     try {
@@ -34,68 +59,59 @@ export default function DashboardPage() {
     fetchReports();
   }, []);
 
-  const handleGenerateReport = async () => {
-    if (generating) return;
-
-    setGenerating(true);
-    const loadingToast = toast.loading("Generating AI report...");
-
-    try {
-      await API.post("/reports/generate-ai-report", {
-        identity: {
-          full_name: user?.email || "Test User",
-          date_of_birth: "01/01/1990", // DD/MM/YYYY REQUIRED
-          gender: "male",
-          country_of_residence: "India"
-        },
-        birth_details: {
-          date_of_birth: "01/01/1990",
-          time_of_birth: "10:30 AM", // MUST include AM/PM
-          birthplace_city: "Mumbai",
-          birthplace_country: "India"
-        },
-        focus: {
-          life_focus: "general_alignment"
-        }
-      });
-
-      toast.success("Report generated successfully 🚀", {
-        id: loadingToast
-      });
-
-      await fetchReports();
-    } catch (error: any) {
-      toast.error(
-        error?.response?.data?.detail || "Report generation failed",
-        { id: loadingToast }
-      );
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const latestReport = reports[0];
+  const risk = latestReport?.content?.risk_analysis;
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-8 space-y-10">
 
-      {/* Header */}
+      {/* HEADER */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">
-            Welcome, {user?.email}
+            Welcome back, {user?.email}
           </h1>
           <p className="text-gray-400 mt-1">
-            Your Life Intelligence Dashboard
+            Your Life Intelligence Executive Dashboard
           </p>
         </div>
 
-        <PlanBadge isPro={user?.plan === "pro"} />
+        <div className="flex items-center gap-4">
+          <PlanBadge plan={currentPlan} />
+          <button
+            onClick={logout}
+            className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded-lg text-sm font-semibold transition"
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* USAGE BAR */}
+      <div className="bg-gray-900 p-6 rounded-2xl shadow-lg">
+        <div className="flex justify-between text-sm mb-2">
+          <span>
+            Reports Used: {used} / {limit}
+          </span>
+          <span>{remaining} remaining</span>
+        </div>
 
+        <div className="w-full bg-gray-800 rounded-full h-3">
+          <div
+            className={`h-3 rounded-full transition-all ${
+              usagePercent > 80
+                ? "bg-red-500"
+                : usagePercent > 50
+                ? "bg-yellow-500"
+                : "bg-emerald-500"
+            }`}
+            style={{ width: `${usagePercent}%` }}
+          />
+        </div>
+      </div>
+
+      {/* KPI CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <MetricCard
           label="Total Reports"
           value={loading ? "..." : reports.length}
@@ -104,26 +120,42 @@ export default function DashboardPage() {
         <MetricCard
           label="Latest Stability Score"
           value={
-            latestReport?.executive_dashboard?.life_stability_index ?? "--"
+            latestReport?.content?.executive_dashboard
+              ?.life_stability_index ?? "--"
           }
         />
 
         <MetricCard
-          label="Latest Risk"
-          value={latestReport?.risk_analysis ?? "--"}
+          label="Overall Risk Level"
+          value={risk?.overall_risk_level ?? "--"}
+        />
+
+        <MetricCard
+          label="Burnout Risk"
+          value={
+            risk?.burnout_risk !== undefined
+              ? `${risk.burnout_risk}%`
+              : "--"
+          }
         />
       </div>
 
-      {/* Actions */}
+      {/* ACTIONS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-        <button
-          onClick={handleGenerateReport}
-          disabled={generating}
+        {/* 🔥 Now only navigation — NOT API call */}
+        <motion.button
+          whileHover={{ scale: 1.03 }}
+          onClick={() => navigate("/generate-report")}
+          disabled={!isActive || limit <= 0 || used >= limit}
           className="bg-indigo-600 hover:bg-indigo-500 p-6 rounded-xl font-semibold transition disabled:opacity-50"
         >
-          {generating ? "Generating..." : "Generate AI Report"}
-        </button>
+          {!isActive || limit <= 0
+            ? "No Active Plan"
+            : used >= limit
+            ? "Limit Reached"
+            : "Generate AI Report"}
+        </motion.button>
 
         <Link
           to="/reports"
@@ -132,12 +164,12 @@ export default function DashboardPage() {
           View All Reports
         </Link>
 
-        {user?.plan !== "pro" && (
+        {(!isActive || used >= limit) && (
           <Link
-            to="/upgrade"
+            to="/billing"
             className="bg-emerald-600 hover:bg-emerald-500 p-6 rounded-xl font-semibold text-center"
           >
-            Upgrade to Pro
+            Upgrade Plan
           </Link>
         )}
       </div>
@@ -147,21 +179,28 @@ export default function DashboardPage() {
 
 function MetricCard({ label, value }: { label: string; value: any }) {
   return (
-    <div className="bg-gray-900 p-6 rounded-xl shadow-md">
+    <motion.div
+      whileHover={{ scale: 1.04 }}
+      className="bg-gray-900 p-6 rounded-2xl shadow-lg"
+    >
       <p className="text-sm text-gray-400">{label}</p>
       <p className="text-3xl font-bold mt-2">{value}</p>
-    </div>
+    </motion.div>
   );
 }
 
-function PlanBadge({ isPro }: { isPro?: boolean }) {
+function PlanBadge({ plan }: { plan: string }) {
   return (
     <div
       className={`px-4 py-2 rounded-full text-sm font-semibold ${
-        isPro ? "bg-emerald-600" : "bg-gray-700"
+        plan === "premium"
+          ? "bg-purple-600"
+          : plan === "pro"
+          ? "bg-emerald-600"
+          : "bg-gray-700"
       }`}
     >
-      {isPro ? "PRO PLAN" : "FREE PLAN"}
+      {plan.toUpperCase()} PLAN
     </div>
   );
 }

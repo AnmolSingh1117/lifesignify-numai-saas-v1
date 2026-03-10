@@ -2,8 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ========================= */
+/* Base Styles */
+/* ========================= */
+
 body {
-  background-color: #0f172a;
-  color: white;
-  font-family: Inter, sans-serif;
+  @apply bg-gray-950 text-white font-sans;
+}
+
+/* ========================= */
+/* Custom Component Classes */
+/* ========================= */
+
+@layer components {
+  /* Input Fields */
+  .input {
+    @apply w-full p-3 bg-gray-800 border border-gray-700 rounded-lg 
+           focus:outline-none focus:ring-2 focus:ring-indigo-500 
+           transition;
+  }
+
+  /* Primary Button */
+  .btn-primary {
+    @apply bg-indigo-600 hover:bg-indigo-500 
+           px-6 py-2 rounded-lg 
+           font-semibold transition;
+  }
+
+  /* Secondary Button */
+  .btn-secondary {
+    @apply bg-gray-700 hover:bg-gray-600 
+           px-6 py-2 rounded-lg 
+           transition;
+  }
+
+  /* Card Container */
+  .card {
+    @apply bg-gray-900 p-6 rounded-2xl shadow-lg;
+  }
+
+  /* Section Title */
+  .section-title {
+    @apply text-xl font-semibold mb-4;
+  }
 }

@@ -1,50 +1,107 @@
-import { useState } from "react"
-import { useAuth } from "../../context/AuthContext"
+import { useState, useEffect } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { Link, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 
 const LoginPage = () => {
-  const { login } = useAuth()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+  const { login, user } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSubmit = async (e: any) => {
-    e.preventDefault()
-    await login(email, password)
-    window.location.href = "/"
-  }
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // ✅ Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (loading) return;
+
+    if (!email || !password) {
+      toast.error("Please enter email and password");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await login(email, password);
+      toast.success("Welcome back 🚀");
+      navigate("/dashboard");
+    } catch (error: any) {
+      // ✅ Dynamic backend error
+      toast.error(
+        error?.response?.data?.detail || "Invalid credentials"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-black text-white">
+    <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white p-6">
       <form
         onSubmit={handleSubmit}
-        className="bg-gray-900 p-8 rounded-xl w-96 shadow-xl"
+        className="bg-gray-900 p-8 rounded-2xl w-full max-w-md shadow-xl space-y-6"
       >
-        <h1 className="text-2xl font-bold mb-6 text-center">
-          Life Signify Login
-        </h1>
+        <div className="text-center">
+          <h1 className="text-3xl font-bold">
+            Life Signify Login
+          </h1>
+          <p className="text-gray-400 mt-2">
+            Access your intelligence dashboard
+          </p>
+        </div>
 
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full p-3 mb-4 bg-gray-800 rounded"
-          onChange={(e) => setEmail(e.target.value)}
-        />
+        <div>
+          <label className="text-sm text-gray-400">Email</label>
+          <input
+            type="email"
+            autoFocus
+            className="w-full mt-1 p-3 bg-gray-800 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
+        </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full p-3 mb-4 bg-gray-800 rounded"
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <div>
+          <label className="text-sm text-gray-400">Password</label>
+          <input
+            type="password"
+            className="w-full mt-1 p-3 bg-gray-800 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+        </div>
 
         <button
           type="submit"
-          className="w-full p-3 bg-purple-600 hover:bg-purple-700 rounded"
+          disabled={loading}
+          className="w-full p-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-semibold transition disabled:opacity-50"
         >
-          Login
+          {loading ? "Logging in..." : "Login"}
         </button>
+
+        <div className="text-center text-sm text-gray-400">
+          Don’t have an account?{" "}
+          <Link
+            to="/register"
+            className="text-indigo-400 hover:underline"
+          >
+            Register
+          </Link>
+        </div>
       </form>
     </div>
-  )
-}
+  );
+};
 
-export default LoginPage
+export default LoginPage;

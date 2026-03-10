@@ -1,36 +1,26 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import API from "../../services/api";
 import RadarChartComponent from "../../components/dashboard/RadarChartComponent";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 
-interface ExecutiveDashboard {
-  life_stability_index?: number;
-  financial_discipline_index?: number;
-  emotional_regulation_index?: number;
-  dharma_alignment_score?: number;
-  karma_pressure_index?: number;
-}
-
-interface AINarrative {
-  executive_summary?: string;
-  psychological_pattern?: string;
-  strategic_advice?: string;
-  plan_30_day?: string;
-  plan_90_day?: string;
-}
-
 interface Report {
   id: number;
   title?: string;
   created_at: string;
-  executive_dashboard?: ExecutiveDashboard;
+
+  executive_dashboard?: any;
   radar_chart_data?: any;
-  ai_narrative?: AINarrative;
+  ai_narrative?: any;
+
+  archetype_hint?: string;
+  numerology_profile?: any;
+  scenario_simulation?: any;
+  three_year_projection?: any;
+
   risk_analysis?: string;
   remedy_direction?: string;
-  status?: string;
 }
 
 export default function ReportDetailPage() {
@@ -42,7 +32,11 @@ export default function ReportDetailPage() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
 
-  const isPro = user?.plan === "pro";
+  // ✅ Proper subscription check
+  const plan =
+    user?.subscription?.plan_name?.toLowerCase() || "basic";
+
+  const hasSubscription = !!user?.subscription;
 
   useEffect(() => {
     if (!id) return;
@@ -62,8 +56,16 @@ export default function ReportDetailPage() {
     fetchReport();
   }, [id]);
 
-  // ✅ FIXED GENERATE FUNCTION
+  // =====================================================
+  // FIXED GENERATE FUNCTION (403 SAFE)
+  // =====================================================
   const generateNewReport = async () => {
+
+    if (!hasSubscription) {
+      toast.error("Please upgrade your plan to generate AI reports.");
+      return;
+    }
+
     const loadingToast = toast.loading("Generating AI Report...");
     setGenerating(true);
 
@@ -92,10 +94,18 @@ export default function ReportDetailPage() {
 
       window.location.href = "/reports";
     } catch (error: any) {
-      toast.error(
-        error?.response?.data?.detail || "Failed to generate report",
-        { id: loadingToast }
-      );
+
+      if (error?.response?.status === 403) {
+        toast.error(
+          error?.response?.data?.detail ||
+          "Your plan does not allow this action.",
+          { id: loadingToast }
+        );
+      } else {
+        toast.error("Failed to generate report", {
+          id: loadingToast,
+        });
+      }
     } finally {
       setGenerating(false);
     }
@@ -145,7 +155,6 @@ export default function ReportDetailPage() {
   }
 
   const dashboard = report.executive_dashboard;
-  const ai = report.ai_narrative;
 
   const radarData =
     report.radar_chart_data ??
@@ -169,7 +178,7 @@ export default function ReportDetailPage() {
             {report.title || "Life Intelligence Report"}
           </h1>
           <p className="text-gray-400 text-sm">
-            Created: {new Date(report.created_at).toLocaleString()}
+            Plan: {plan.toUpperCase()}
           </p>
         </div>
 
@@ -192,11 +201,8 @@ export default function ReportDetailPage() {
       </div>
 
       {dashboard && (
-        <div>
-          <h2 className="text-xl font-semibold mb-6">
-            Executive Dashboard
-          </h2>
-
+        <>
+          <h2 className="text-xl font-semibold">Executive Dashboard</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <ScoreCard label="Life Stability" value={dashboard.life_stability_index} />
             <ScoreCard label="Financial Discipline" value={dashboard.financial_discipline_index} />
@@ -204,45 +210,11 @@ export default function ReportDetailPage() {
             <ScoreCard label="Dharma Alignment" value={dashboard.dharma_alignment_score} />
             <ScoreCard label="Karma Pressure" value={dashboard.karma_pressure_index} />
           </div>
-        </div>
+        </>
       )}
 
       {radarData.length > 0 && (
         <RadarChartComponent data={radarData} />
-      )}
-
-      {ai && (
-        <div className="space-y-6">
-          <h2 className="text-xl font-semibold">AI Strategic Analysis</h2>
-
-          {ai.executive_summary && (
-            <Section title="Executive Summary" content={ai.executive_summary} />
-          )}
-
-          {ai.psychological_pattern && (
-            <Section title="Psychological Pattern" content={ai.psychological_pattern} />
-          )}
-
-          {ai.strategic_advice && (
-            <Section title="Strategic Advice" content={ai.strategic_advice} />
-          )}
-
-          {ai.plan_30_day && (
-            <Section title="30 Day Plan" content={ai.plan_30_day} />
-          )}
-
-          {ai.plan_90_day && (
-            <Section title="90 Day Plan" content={ai.plan_90_day} />
-          )}
-        </div>
-      )}
-
-      {report.risk_analysis && (
-        <Section title="Risk Analysis" content={report.risk_analysis} />
-      )}
-
-      {report.remedy_direction && (
-        <Section title="Remedy Direction" content={report.remedy_direction} />
       )}
     </div>
   );
@@ -255,15 +227,6 @@ function ScoreCard({ label, value }: { label: string; value?: number }) {
       <p className="text-3xl font-bold mt-2">
         {value ?? "--"}
       </p>
-    </div>
-  );
-}
-
-function Section({ title, content }: { title: string; content: string }) {
-  return (
-    <div className="bg-gray-900 p-6 rounded-xl">
-      <h2 className="text-xl font-semibold mb-3">{title}</h2>
-      <p className="text-gray-300 whitespace-pre-line">{content}</p>
     </div>
   );
 }

@@ -13,7 +13,6 @@ interface Report {
 export default function ReportsListPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
 
   const fetchReports = async () => {
@@ -32,48 +31,10 @@ export default function ReportsListPage() {
     fetchReports();
   }, []);
 
-  const generateReport = async () => {
-    const loadingToast = toast.loading("Generating AI Report...");
-    setGenerating(true);
-
-    try {
-      await API.post("/reports/generate-ai-report", {
-        identity: {
-          full_name: "Jay Prakash",
-          date_of_birth: "20/02/1990",
-          gender: "male",
-          country_of_residence: "India",
-        },
-        birth_details: {
-          date_of_birth: "20/02/1990",
-          time_of_birth: "10:30 AM",
-          birthplace_city: "Mumbai",
-          birthplace_country: "India",
-        },
-        focus: {
-          life_focus: "career_growth",
-        },
-      });
-
-      toast.success("AI Report generated successfully 🚀", {
-        id: loadingToast,
-      });
-
-      fetchReports();
-    } catch (error: any) {
-      toast.error(
-        error?.response?.data?.detail || "Failed to generate report",
-        { id: loadingToast }
-      );
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-        <div className="animate-pulse text-lg">Loading Reports...</div>
+        Loading Reports...
       </div>
     );
   }
@@ -92,13 +53,12 @@ export default function ReportsListPage() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">My Reports</h1>
 
-        <button
-          onClick={generateReport}
-          disabled={generating}
-          className="bg-indigo-600 hover:bg-indigo-500 px-5 py-2 rounded-lg transition disabled:opacity-50"
+        <Link
+          to="/generate-report"
+          className="bg-indigo-600 hover:bg-indigo-500 px-5 py-2 rounded-lg transition"
         >
-          {generating ? "Generating..." : "Generate New Report"}
-        </button>
+          Generate New Report
+        </Link>
       </div>
 
       {reports.length === 0 ? (

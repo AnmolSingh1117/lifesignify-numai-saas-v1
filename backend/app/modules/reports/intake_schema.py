@@ -3,21 +3,26 @@ from typing import Optional, List, Literal
 
 
 # =========================================================
-# I. MANDATORY INPUTS
+# I. CORE IDENTITY (NUMEROLOGY FOUNDATION)
 # =========================================================
 
 class BasicIdentity(BaseModel):
     full_name: str = Field(..., min_length=2)
-    date_of_birth: str  # DD/MM/YYYY
+    date_of_birth: str  # YYYY-MM-DD recommended
     gender: Optional[Literal["male", "female", "other"]] = None
     country_of_residence: str = Field(..., min_length=2)
 
+    # 🔥 Added for hybrid systems
+    email: Optional[str] = None
+    partner_name: Optional[str] = None
+    business_name: Optional[str] = None
+
 
 class BirthDetails(BaseModel):
-    date_of_birth: str  # repeated for clarity
-    time_of_birth: Optional[str] = None  # HH:MM AM/PM
-    birthplace_city: str
-    birthplace_country: str
+    date_of_birth: str
+    time_of_birth: Optional[str] = None
+    birthplace_city: Optional[str] = None
+    birthplace_country: Optional[str] = None
 
 
 class FocusArea(BaseModel):
@@ -37,7 +42,7 @@ class ContactLayer(BaseModel):
 
 
 # =========================================================
-# II. ENHANCED INPUTS
+# II. BEHAVIORAL / SCORING LAYER
 # =========================================================
 
 class FinancialSnapshot(BaseModel):
@@ -62,7 +67,7 @@ class EmotionalState(BaseModel):
 
 
 # =========================================================
-# III. PREMIUM INPUTS
+# III. PREMIUM / ADVANCED INPUTS
 # =========================================================
 
 class LifeEvents(BaseModel):
@@ -85,7 +90,7 @@ class HealthLifestyle(BaseModel):
 
 
 # =========================================================
-# AI CALIBRATION QUESTIONS
+# AI CALIBRATION LAYER
 # =========================================================
 
 class CalibrationAnswers(BaseModel):
@@ -117,20 +122,32 @@ class CalibrationAnswers(BaseModel):
 
 class LifeSignifyRequest(BaseModel):
 
-    # Mandatory
+    # 🔹 Core Numerology
     identity: BasicIdentity
     birth_details: BirthDetails
     focus: FocusArea
 
-    # Optional layers
+    # 🔹 Personalization
+    current_problem: Optional[str] = None
+
+    # 🔹 Optional Contact
     contact: Optional[ContactLayer] = None
+
+    # 🔹 Behavioral Scoring
     financial: Optional[FinancialSnapshot] = None
     career: Optional[CareerProfile] = None
     emotional: Optional[EmotionalState] = None
+
+    # 🔹 Advanced Layers
     life_events: Optional[LifeEvents] = None
     business_history: Optional[BusinessHistory] = None
     health: Optional[HealthLifestyle] = None
     calibration: Optional[CalibrationAnswers] = None
+
+    # 🔹 Internal testing override
+    plan_override: Optional[
+        Literal["basic", "pro", "premium", "enterprise"]
+    ] = None
 
     model_config = {
         "extra": "ignore"

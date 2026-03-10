@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.models import User, Organization
+from app.db.models import User, Organization, Subscription
 from app.core.security import (
     hash_password,
     verify_password,
@@ -13,7 +13,7 @@ from app.core.audit import log_action
 
 
 # =====================================================
-# REGISTER (Create User inside Organization)
+# REGISTER (ALWAYS CREATE NEW ORG + BASIC SUBSCRIPTION)
 # =====================================================
 def create_user(
     db: Session,
@@ -22,43 +22,45 @@ def create_user(
     organization_name: str
 ):
     try:
-        if (
-            db.query(User)
-            .filter(User.email == email, User.is_deleted == False)
-            .first()
-        ):
+        # 🔒 Prevent duplicate email
+        if db.query(User).filter(User.email == email).first():
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        organization = (
-            db.query(Organization)
-            .filter(
-                Organization.name == organization_name,
-                Organization.is_deleted == False
+        # 🔒 Prevent joining existing organization (important fix)
+        if db.query(Organization).filter(
+            Organization.name == organization_name
+        ).first():
+            raise HTTPException(
+                status_code=400,
+                detail="Organization name already exists. Please choose a different name."
             )
-            .first()
+
+        # 🏢 Always create new organization
+        organization = Organization(
+            name=organization_name,
+            plan="basic"  # default plan
         )
+        db.add(organization)
+        db.flush()  # get organization.id
 
-        is_new_org = False
-
-        if not organization:
-            organization = Organization(
-                name=organization_name,
-                plan="free"
-            )
-            db.add(organization)
-            db.flush()
-            is_new_org = True
-
-        role = "admin" if is_new_org else "user"
-
+        # 👤 First user is always admin
         user = User(
             email=email,
             password=hash_password(password),
             tenant_id=organization.id,
-            role=role
+            role="admin"
         )
-
         db.add(user)
+        db.flush()
+
+        # 🔥 Always create basic subscription
+        subscription = Subscription(
+            tenant_id=organization.id,
+            plan_name="basic",
+            is_active=True,
+        )
+        db.add(subscription)
+
         db.commit()
         db.refresh(user)
 
@@ -87,18 +89,11 @@ def create_user(
 
 
 # =====================================================
-# AUTHENTICATE USER (Soft Delete Aware)
+# AUTHENTICATE USER
 # =====================================================
 def authenticate_user(db: Session, email: str, password: str):
 
-    user = (
-        db.query(User)
-        .filter(
-            User.email == email,
-            User.is_deleted == False
-        )
-        .first()
-    )
+    user = db.query(User).filter(User.email == email).first()
 
     if not user:
         return None
@@ -110,7 +105,7 @@ def authenticate_user(db: Session, email: str, password: str):
 
 
 # =====================================================
-# LOGIN (JWT contains tenant_id + role ONLY)
+# LOGIN (JWT = user + tenant + role)
 # =====================================================
 def login_user(db: Session, email: str, password: str):
 
@@ -121,17 +116,13 @@ def login_user(db: Session, email: str, password: str):
 
     organization = (
         db.query(Organization)
-        .filter(
-            Organization.id == user.tenant_id,
-            Organization.is_deleted == False
-        )
+        .filter(Organization.id == user.tenant_id)
         .first()
     )
 
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    # ✅ Removed plan from JWT
     token = create_access_token(
         {
             "sub": str(user.id),
@@ -157,7 +148,7 @@ def login_user(db: Session, email: str, password: str):
 
 
 # =====================================================
-# UPDATE ORGANIZATION PLAN (Admin Only)
+# UPDATE ORGANIZATION PLAN (ADMIN)
 # =====================================================
 def update_organization_plan(
     db: Session,
@@ -166,10 +157,7 @@ def update_organization_plan(
 ):
     organization = (
         db.query(Organization)
-        .filter(
-            Organization.id == current_user.tenant_id,
-            Organization.is_deleted == False
-        )
+        .filter(Organization.id == current_user.tenant_id)
         .first()
     )
 

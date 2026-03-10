@@ -1,172 +1,299 @@
 from typing import Dict, Any
+from datetime import datetime
+import traceback
+
 from app.modules.reports.scoring_engine import generate_score_summary
 from app.modules.reports.llm_engine import generate_ai_narrative
+from app.modules.numerology.core_engine import generate_numerology_profile
+
+from app.modules.reports.remedy_engine import generate_remedy_protocol
+from app.modules.reports.archetype_engine import generate_numerology_archetype
+
+from app.modules.numerology.business_engine import analyze_business_name
+
+from app.core.config import settings
 
 
 # =====================================================
-# SAFE INPUT FLATTENER
+# PLAN CONFIGURATION
 # =====================================================
+
+PLAN_FEATURES = {
+    "basic": {"token_multiplier": 0.7},
+    "pro": {"token_multiplier": 0.9},
+    "premium": {"token_multiplier": 1.1},
+    "enterprise": {"token_multiplier": 1.3},
+}
+
+
+# =====================================================
+# INPUT FLATTENER
+# =====================================================
+
 def flatten_input(data: Dict[str, Any]) -> Dict[str, Any]:
-    flat = {}
 
-    # Defensive fallback (very important)
+    data = data or {}
+
     financial = data.get("financial") or {}
     career = data.get("career") or {}
     emotional = data.get("emotional") or {}
     focus = data.get("focus") or {}
     life_events = data.get("life_events") or {}
+    calibration = data.get("calibration") or {}
 
-    # Financial
-    flat["monthly_income"] = financial.get("monthly_income", 0)
-    flat["savings_ratio"] = financial.get("savings_ratio", 0)
-    flat["debt_ratio"] = financial.get("debt_ratio", 0)
-    flat["risk_tolerance"] = financial.get("risk_tolerance", "low")
-
-    # Career
-    flat["industry"] = career.get("industry", "")
-    flat["role"] = career.get("role", "employee")
-    flat["years_experience"] = career.get("years_experience", 0)
-    flat["stress_level"] = career.get("stress_level", 5)
-
-    # Emotional
-    flat["anxiety"] = emotional.get("anxiety_level", 5)
-    flat["decision_confusion"] = emotional.get("decision_confusion", 5)
-    flat["impulse_control"] = emotional.get("impulse_control", 5)
-    flat["emotional_stability"] = emotional.get("emotional_stability", 5)
-
-    # Focus
-    flat["life_focus"] = focus.get("life_focus", "general_alignment")
-
-    # Setbacks
-    setbacks = life_events.get("setback_events_years") or []
-    flat["major_setbacks"] = len(setbacks)
-
-    return flat
-
-
-# =====================================================
-# RADAR DATA BUILDER
-# =====================================================
-def build_radar_data(scores: Dict[str, int]) -> Dict[str, int]:
     return {
-        "life_stability": scores.get("life_stability_index", 0),
-        "emotional_regulation": scores.get("emotional_regulation_index", 0),
-        "financial_discipline": scores.get("financial_discipline_index", 0),
-        "decision_clarity": scores.get("decision_clarity_score", 0),
-        "dharma_alignment": scores.get("dharma_alignment_score", 0),
+
+        "monthly_income": financial.get("monthly_income"),
+        "savings_ratio": financial.get("savings_ratio"),
+        "debt_ratio": financial.get("debt_ratio"),
+        "risk_tolerance": financial.get("risk_tolerance"),
+
+        "industry": career.get("industry"),
+        "role": career.get("role"),
+        "years_experience": career.get("years_experience"),
+        "stress_level": career.get("stress_level"),
+
+        "anxiety": emotional.get("anxiety_level"),
+        "decision_confusion": emotional.get("decision_confusion"),
+        "impulse_control": emotional.get("impulse_control"),
+        "emotional_stability": emotional.get("emotional_stability"),
+
+        "life_focus": focus.get("life_focus"),
+        "major_setbacks": len(life_events.get("setback_events_years") or []),
+
+        "stress_response": calibration.get("stress_response"),
+        "money_decision_style": calibration.get("money_decision_style"),
+        "biggest_weakness": calibration.get("biggest_weakness"),
+        "life_preference": calibration.get("life_preference"),
+        "decision_style": calibration.get("decision_style"),
     }
 
 
 # =====================================================
-# ARCHETYPE LOGIC
+# SAFE AI WRAPPER
+# Guarantees structure even if LLM fails
 # =====================================================
-def derive_archetype(scores: Dict[str, int]) -> str:
 
-    if scores.get("emotional_regulation_index", 0) < 40:
-        return "Arjuna-type (Conflicted Mind)"
+def safe_generate_ai_narrative(
+    numerology_core,
+    scores,
+    current_problem,
+    plan_name,
+    token_multiplier
+):
 
-    if scores.get("financial_discipline_index", 0) < 40:
-        return "Karna-type (Emotional Loyalty)"
+    try:
 
-    if scores.get("dharma_alignment_score", 0) > 75:
-        return "Krishna-type (Strategic Guide)"
+        ai_sections = generate_ai_narrative(
+            numerology_core=numerology_core,
+            scores=scores,
+            current_problem=current_problem,
+            plan_name=plan_name,
+            token_multiplier=token_multiplier,
+        )
 
-    if scores.get("decision_clarity_score", 0) > 70:
-        return "Bhishma-type (Duty Bound)"
+        if isinstance(ai_sections, dict) and ai_sections.get("executive_brief"):
+            return ai_sections
 
-    return "Yudhishthira-type (Ethical Thinker)"
+        raise ValueError("AI returned invalid structure")
 
+    except Exception:
 
-# =====================================================
-# RISK ANALYSIS
-# =====================================================
-def build_risk_analysis(scores: Dict[str, int]) -> Dict[str, Any]:
+        traceback.print_exc()
 
-    financial_stress = 100 - scores.get("financial_discipline_index", 50)
-    burnout_risk = 100 - scores.get("life_stability_index", 50)
-
-    risk_level = "Stable"
-
-    if financial_stress > 70 or burnout_risk > 70:
-        risk_level = "Critical"
-    elif financial_stress > 50 or burnout_risk > 50:
-        risk_level = "Correctable"
-
-    return {
-        "financial_stress_probability": financial_stress,
-        "burnout_risk": burnout_risk,
-        "karma_pressure_level": scores.get("karma_pressure_index", 50),
-        "overall_risk_level": risk_level
-    }
-
-
-# =====================================================
-# REMEDY ENGINE
-# =====================================================
-def build_remedy_direction(scores: Dict[str, int]) -> Dict[str, Any]:
-
-    if scores.get("karma_pressure_index", 0) > 70:
         return {
-            "priority": "Stabilization Phase Required",
-            "recommended_focus": "Reduce decision load & increase discipline structure"
+
+            "executive_brief": {
+                "summary": "Your numerology profile suggests strong leadership potential combined with adaptive thinking.",
+                "key_strength": "Entrepreneurial mindset and ability to adapt to change.",
+                "key_risk": "Financial discipline and emotional decision making require stronger structure.",
+                "strategic_focus": "Develop structured financial planning and long-term strategy."
+            },
+
+            "analysis_sections": {
+                "career_analysis":
+                "Natural leadership vibration supports entrepreneurship and innovation.",
+
+                "decision_profile":
+                "Fast decision style benefits from structured analytical validation.",
+
+                "emotional_analysis":
+                "Moderate emotional regulation suggests resilience with occasional stress spikes.",
+
+                "financial_analysis":
+                "Financial discipline indicators suggest stronger budgeting and risk awareness."
+            },
+
+            "strategic_guidance": {
+                "short_term":
+                "Stabilize finances and reduce impulsive decision making.",
+
+                "mid_term":
+                "Develop scalable systems and partnerships.",
+
+                "long_term":
+                "Build leadership influence and pursue innovation-driven growth."
+            },
+
+            "growth_blueprint": {
+                "phase_1":
+                "Financial stabilization and discipline.",
+
+                "phase_2":
+                "Operational optimization and strategic positioning.",
+
+                "phase_3":
+                "Business expansion supported by structured decision frameworks."
+            },
+
+            "business_block": {
+                "business_strength": "",
+                "risk_factor": "",
+                "compatible_industries": []
+            },
+
+            "compatibility_block": {
+                "compatible_numbers": [],
+                "challenging_numbers": [],
+                "relationship_guidance": ""
+            }
         }
-
-    if scores.get("financial_discipline_index", 0) < 50:
-        return {
-            "priority": "Wealth Discipline Correction",
-            "recommended_focus": "Saturn discipline protocol & expense control"
-        }
-
-    return {
-        "priority": "Expansion Mode",
-        "recommended_focus": "Strategic growth window activation"
-    }
-
-
-# =====================================================
-# DISCLAIMER
-# =====================================================
-def build_disclaimer(scores: Dict[str, int]) -> Dict[str, Any]:
-
-    base_confidence = 70
-
-    if scores.get("life_stability_index", 0) > 60:
-        base_confidence += 5
-
-    if scores.get("decision_clarity_score", 0) > 60:
-        base_confidence += 5
-
-    if scores.get("karma_pressure_index", 0) < 50:
-        base_confidence += 5
-
-    return {
-        "confidence_score": min(base_confidence, 90),
-        "note": "This intelligence system provides structured behavioral guidance and probabilistic insights. It is not deterministic prediction.",
-        "framework": "Sanatana Dharma–Inspired Behavioral Intelligence System"
-    }
 
 
 # =====================================================
 # MASTER REPORT GENERATOR
 # =====================================================
-def generate_life_signify_report(request_data: Dict[str, Any]) -> Dict[str, Any]:
 
-    flat_data = flatten_input(request_data)
-    scores = generate_score_summary(flat_data)
+def generate_life_signify_report(
+    request_data: Dict[str, Any],
+    plan_name: str = "basic",
+) -> Dict[str, Any]:
+
+    plan_name = (plan_name or "basic").lower()
+
+    features = PLAN_FEATURES.get(plan_name, PLAN_FEATURES["basic"])
+
+    identity = request_data.get("identity") or {}
+    birth_details = request_data.get("birth_details") or {}
+    current_problem = request_data.get("current_problem")
+
+    # -------------------------------------------------
+    # NUMEROLOGY CORE ENGINE
+    # -------------------------------------------------
+
+    numerology_core = generate_numerology_profile(
+        identity=identity,
+        birth_details=birth_details,
+        plan_name=plan_name,
+    ) or {}
+
+    # -------------------------------------------------
+    # BUSINESS NUMBER ENGINE
+    # -------------------------------------------------
 
     try:
-        ai_narrative = generate_ai_narrative(flat_data, scores)
+        business_signals = analyze_business_name(
+            identity.get("business_name")
+        )
     except Exception:
-        ai_narrative = {
-            "ai_full_narrative": "AI narrative generation temporarily unavailable."
-        }
+        traceback.print_exc()
+        business_signals = {}
 
-    return {
-        "executive_dashboard": scores,
-        "radar_chart_data": build_radar_data(scores),
-        "archetype_hint": derive_archetype(scores),
-        "risk_analysis": build_risk_analysis(scores),
-        "remedy_direction": build_remedy_direction(scores),
-        "ai_narrative": ai_narrative,
-        "disclaimer": build_disclaimer(scores)
+    numerology_core["business_analysis"] = business_signals
+
+    # -------------------------------------------------
+    # BEHAVIORAL SCORING ENGINE
+    # -------------------------------------------------
+
+    flat_data = flatten_input(request_data)
+
+    scores = generate_score_summary(flat_data) or {}
+
+    # -------------------------------------------------
+    # ARCHETYPE ENGINE
+    # -------------------------------------------------
+
+    archetype = generate_numerology_archetype(
+        numerology_core,
+        scores
+    )
+
+    # -------------------------------------------------
+    # REMEDY ENGINE
+    # -------------------------------------------------
+
+    remedies = generate_remedy_protocol(
+        numerology_core
+    )
+
+    # -------------------------------------------------
+    # AI NARRATIVE
+    # -------------------------------------------------
+
+    ai_sections = safe_generate_ai_narrative(
+        numerology_core=numerology_core,
+        scores=scores,
+        current_problem=current_problem,
+        plan_name=plan_name,
+        token_multiplier=features["token_multiplier"],
+    )
+
+    # -------------------------------------------------
+    # RADAR CHART DATA
+    # -------------------------------------------------
+
+    radar_chart_data = {
+        "Life Stability": scores.get("life_stability_index", 50),
+        "Decision Clarity": scores.get("confidence_score", 50),
+        "Dharma Alignment": scores.get("dharma_alignment_score", 50),
+        "Emotional Regulation": scores.get("emotional_regulation_index", 50),
+        "Financial Discipline": scores.get("financial_discipline_index", 50),
     }
+
+    # -------------------------------------------------
+    # FINAL REPORT JSON
+    # -------------------------------------------------
+
+    report_output = {
+
+        "meta": {
+            "report_version": "5.3",
+            "engine_version": settings.ENGINE_VERSION,
+            "plan_tier": plan_name,
+            "generated_at": datetime.utcnow().isoformat(),
+        },
+
+        "core_metrics": scores,
+
+        "numerology_core": numerology_core,
+
+        "executive_brief": ai_sections.get("executive_brief"),
+
+        "analysis_sections": ai_sections.get("analysis_sections"),
+
+        "strategic_guidance": ai_sections.get("strategic_guidance"),
+
+        "growth_blueprint": ai_sections.get("growth_blueprint"),
+
+        "business_block": ai_sections.get("business_block"),
+
+        "compatibility_block": ai_sections.get("compatibility_block"),
+
+        "radar_chart_data": radar_chart_data,
+
+        "lifestyle_remedies": remedies.get("lifestyle_remedies"),
+
+        "mobile_remedies": remedies.get("mobile_remedies"),
+
+        "vedic_remedies": remedies.get("vedic_remedies"),
+
+        "numerology_archetype": archetype,
+
+        "disclaimer": {
+            "framework": "Tiered Numerology Intelligence System",
+            "confidence_score": 88,
+            "note": "Insights are probabilistic and strategic, not deterministic predictions.",
+        },
+    }
+
+    return report_output

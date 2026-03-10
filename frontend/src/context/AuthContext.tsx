@@ -1,12 +1,28 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 import API from "../services/api";
 
 interface User {
   id: number;
   email: string;
-  tenant_id: number;
   role: string;
-  plan: string; // ✅ "free" | "pro"
+  organization: {
+    id: number;
+    name: string;
+    plan: string;
+  };
+  subscription: {
+    plan_name: string;
+    is_active: boolean;
+    end_date: string | null;
+    reports_used: number;
+  };
 }
 
 interface AuthContextType {
@@ -19,30 +35,43 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-export const AuthProvider = ({ children }: any) => {
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 🔥 Single source of truth
-  const loadUser = async () => {
+  const initialized = useRef(false);
+  const loadingUser = useRef(false); // prevents parallel calls
+
+  const loadUser = useCallback(async () => {
+    if (loadingUser.current) return; // prevent duplicate calls
+    loadingUser.current = true;
+
     try {
       const res = await API.get("/users/me");
-
-      // ensure new object reference for re-render
-      setUser({ ...res.data });
+      setUser(res.data);
     } catch {
+      localStorage.removeItem("access_token");
       setUser(null);
+    } finally {
+      loadingUser.current = false;
     }
-  };
+  }, []);
 
-  const initializeAuth = async () => {
-    if (localStorage.getItem("access_token")) {
-      await loadUser();
+  const initializeAuth = useCallback(async () => {
+    if (initialized.current) return; // StrictMode safe
+    initialized.current = true;
+
+    const token = localStorage.getItem("access_token");
+
+    if (!token) {
+      setLoading(false);
+      return;
     }
+
+    await loadUser();
     setLoading(false);
-  };
+  }, [loadUser]);
 
-  // ✅ Used after upgrade
   const refreshUser = async () => {
     await loadUser();
   };
@@ -53,10 +82,13 @@ export const AuthProvider = ({ children }: any) => {
     formData.append("password", password);
 
     const response = await API.post("/users/login", formData, {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
     });
 
     localStorage.setItem("access_token", response.data.access_token);
+
     await loadUser();
   };
 
@@ -68,7 +100,7 @@ export const AuthProvider = ({ children }: any) => {
 
   useEffect(() => {
     initializeAuth();
-  }, []);
+  }, [initializeAuth]);
 
   return (
     <AuthContext.Provider
@@ -87,8 +119,10 @@ export const AuthProvider = ({ children }: any) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
+
   if (!context) {
     throw new Error("useAuth must be used inside AuthProvider");
   }
+
   return context;
 };

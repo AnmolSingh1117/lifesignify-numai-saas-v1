@@ -1,37 +1,40 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError, OperationalError
-import time
+from sqlalchemy.exc import SQLAlchemyError
+import traceback
+import logging
 
 from app.db.session import engine, Base
-from app.db import models  # ensures models are registered
+import app.db.models  # ensures models register
 
 from app.modules.users.router import router as users_router
 from app.modules.reports.router import router as reports_router
 from app.modules.payments.router import router as payments_router
 from app.modules.admin.router import router as admin_router
 
-from app.core.engine_config import ENGINE_VERSION
+from app.core.config import settings
 
 
 # =====================================================
-# APP INITIALIZATION
+# LOGGER
 # =====================================================
 
-app = FastAPI(title="Life Signify NumAI SaaS")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+app = FastAPI(title=settings.APP_NAME)
 
 
 # =====================================================
-# CORS (Frontend: Vite Dev Servers)
+# CORS
 # =====================================================
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-    ],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,34 +42,63 @@ app.add_middleware(
 
 
 # =====================================================
-# DATABASE STARTUP RETRY (Docker-Safe)
+# GLOBAL ERROR HANDLER
+# =====================================================
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+
+    # Print full stack trace
+    logger.error("Unhandled Exception:")
+    traceback.print_exc()
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "message": "Internal Server Error"
+        },
+    )
+
+
+# =====================================================
+# STARTUP INITIALIZATION
 # =====================================================
 
 @app.on_event("startup")
 def startup_event():
-    MAX_RETRIES = 10
-    RETRY_DELAY = 3
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            Base.metadata.create_all(bind=engine)
-            print("✅ Database connected successfully.")
-            return
-        except OperationalError:
-            print(f"⏳ Database not ready. Retry {attempt + 1}/{MAX_RETRIES}...")
-            time.sleep(RETRY_DELAY)
+    try:
 
-    raise Exception("❌ Could not connect to database after multiple attempts.")
+        # CREATE TABLES
+        Base.metadata.create_all(bind=engine)
+
+        # Ensure backward-compatible schema for existing deployments.
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE reports ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ")
+            )
+            connection.execute(text("SELECT 1"))
+
+        logger.info("✅ Database connected.")
+        logger.info("✅ Tables created successfully.")
+
+    except Exception as e:
+
+        logger.error("❌ Database initialization failed")
+        traceback.print_exc()
+
+        raise RuntimeError("Database initialization failed") from e
 
 
 # =====================================================
 # ROUTERS
 # =====================================================
 
-app.include_router(users_router, prefix="/api/users", tags=["Users"])
-app.include_router(reports_router, prefix="/api/reports", tags=["Reports"])
-app.include_router(payments_router, prefix="/api/payments", tags=["Payments"])
-app.include_router(admin_router)
+app.include_router(users_router, prefix="/api/users")
+app.include_router(reports_router, prefix="/api/reports")
+app.include_router(payments_router, prefix="/api/payments")
+app.include_router(admin_router, prefix="/api/admin")
 
 
 # =====================================================
@@ -75,30 +107,32 @@ app.include_router(admin_router)
 
 @app.get("/")
 def root():
+
     return {
-        "status": "Life Signify NumAI SaaS Running 🚀",
-        "engine_version": ENGINE_VERSION
+        "status": "Running",
+        "engine_version": settings.ENGINE_VERSION
     }
 
 
 # =====================================================
-# HEALTH CHECK (Production-Ready)
+# HEALTH
 # =====================================================
 
-@app.get("/health", tags=["System"])
+@app.get("/health")
 def health_check():
-    db_status = "unknown"
 
     try:
+
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+
         db_status = "connected"
+
     except SQLAlchemyError:
+
         db_status = "disconnected"
 
     return {
         "status": "healthy",
-        "service": "Life Signify NumAI",
-        "engine_version": ENGINE_VERSION,
         "database": db_status
     }

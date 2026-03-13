@@ -1,49 +1,38 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import toast from "react-hot-toast";
 import API from "../../services/api";
 import RadarChartComponent from "../../components/dashboard/RadarChartComponent";
+import AnimatedButton from "../../components/ui/AnimatedButton";
+import DashboardCard from "../../components/ui/DashboardCard";
+import StatCard from "../../components/ui/StatCard";
 import { useAuth } from "../../context/AuthContext";
-import toast from "react-hot-toast";
-
-interface Report {
-  id: number;
-  title?: string;
-  created_at: string;
-
-  executive_dashboard?: any;
-  radar_chart_data?: any;
-  ai_narrative?: any;
-
-  archetype_hint?: string;
-  numerology_profile?: any;
-  scenario_simulation?: any;
-  three_year_projection?: any;
-
-  risk_analysis?: string;
-  remedy_direction?: string;
-}
+import {
+  type RadarDataPoint,
+  type Report,
+  normalizeRadarChartData,
+} from "../../types/report";
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ Proper subscription check
-  const plan =
-    user?.subscription?.plan_name?.toLowerCase() || "basic";
-
-  const hasSubscription = !!user?.subscription;
-
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setError("Report not found.");
+      setLoading(false);
+      return;
+    }
 
     const fetchReport = async () => {
       try {
-        const res = await API.get(`/reports/${id}`);
+        const res = await API.get<Report>(`/reports/${id}`);
         setReport(res.data);
       } catch {
         setError("Failed to load report.");
@@ -53,71 +42,27 @@ export default function ReportDetailPage() {
       }
     };
 
-    fetchReport();
+    void fetchReport();
   }, [id]);
 
-  // =====================================================
-  // FIXED GENERATE FUNCTION (403 SAFE)
-  // =====================================================
-  const generateNewReport = async () => {
-
-    if (!hasSubscription) {
-      toast.error("Please upgrade your plan to generate AI reports.");
-      return;
-    }
-
-    const loadingToast = toast.loading("Generating AI Report...");
-    setGenerating(true);
-
-    try {
-      await API.post("/reports/generate-ai-report", {
-        identity: {
-          full_name: "Jay Prakash",
-          date_of_birth: "20/02/1990",
-          gender: "male",
-          country_of_residence: "India",
-        },
-        birth_details: {
-          date_of_birth: "20/02/1990",
-          time_of_birth: "10:30 AM",
-          birthplace_city: "Mumbai",
-          birthplace_country: "India",
-        },
-        focus: {
-          life_focus: "career_growth",
-        },
-      });
-
-      toast.success("New AI Report generated 🚀", {
-        id: loadingToast,
-      });
-
-      window.location.href = "/reports";
-    } catch (error: any) {
-
-      if (error?.response?.status === 403) {
-        toast.error(
-          error?.response?.data?.detail ||
-          "Your plan does not allow this action.",
-          { id: loadingToast }
-        );
-      } else {
-        toast.error("Failed to generate report", {
-          id: loadingToast,
-        });
-      }
-    } finally {
-      setGenerating(false);
-    }
-  };
+  const reportPlan =
+    report?.content.meta?.plan_tier?.toLowerCase() ||
+    user?.subscription?.plan_name?.toLowerCase() ||
+    "basic";
 
   const downloadPDF = async () => {
-    if (!id) return;
+    if (!id || !report) return;
 
     const loadingToast = toast.loading("Preparing PDF...");
+    setDownloading(true);
 
     try {
-      const response = await API.get(`/reports/${id}/export-pdf`, {
+      const pdfRoute =
+        reportPlan === "basic"
+          ? `/reports/${id}/preview-pdf`
+          : `/reports/${id}/export-pdf`;
+
+      const response = await API.get(pdfRoute, {
         responseType: "blob",
       });
 
@@ -127,106 +72,211 @@ export default function ReportDetailPage() {
       link.setAttribute("download", `report-${id}.pdf`);
       document.body.appendChild(link);
       link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
 
-      toast.success("Report downloaded successfully", {
-        id: loadingToast,
-      });
+      toast.success("Report downloaded successfully", { id: loadingToast });
     } catch {
-      toast.error("Failed to download PDF", {
-        id: loadingToast,
-      });
+      toast.error("Failed to download PDF", { id: loadingToast });
+    } finally {
+      setDownloading(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-        <div className="animate-pulse text-lg">Loading Report...</div>
+      <div className="premium-page">
+        <DashboardCard compact title="Loading report" description="Pulling the latest report content from the backend.">
+          <div className="h-40 loading-shimmer rounded-[18px]" />
+        </DashboardCard>
       </div>
     );
   }
 
   if (error || !report) {
     return (
-      <div className="min-h-screen bg-gray-950 text-red-400 flex items-center justify-center">
-        {error || "Report not found."}
+      <div className="premium-page">
+        <DashboardCard compact title="Unable to load report" description={error || "Report not found."}>
+          <AnimatedButton variant="secondary" onClick={() => navigate("/reports")}>Back to reports</AnimatedButton>
+        </DashboardCard>
       </div>
     );
   }
 
-  const dashboard = report.executive_dashboard;
-
-  const radarData =
-    report.radar_chart_data ??
-    (dashboard
-      ? [
-          { metric: "Life Stability", score: dashboard.life_stability_index ?? 0 },
-          { metric: "Financial Discipline", score: dashboard.financial_discipline_index ?? 0 },
-          { metric: "Emotional Regulation", score: dashboard.emotional_regulation_index ?? 0 },
-          { metric: "Dharma Alignment", score: dashboard.dharma_alignment_score ?? 0 },
-          { metric: "Karma Pressure", score: dashboard.karma_pressure_index ?? 0 },
-        ]
-      : []);
+  const radarData: RadarDataPoint[] = normalizeRadarChartData(report.content.radar_chart_data);
+  const coreMetrics = report.content.core_metrics;
+  const executiveBrief = report.content.executive_brief;
+  const numerologyCore = report.content.numerology_core;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-8 space-y-10">
-
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">
-            {report.title || "Life Intelligence Report"}
-          </h1>
-          <p className="text-gray-400 text-sm">
-            Plan: {plan.toUpperCase()}
-          </p>
-        </div>
-
-        <div className="flex gap-4">
-          <button
-            onClick={generateNewReport}
-            disabled={generating}
-            className="bg-emerald-600 hover:bg-emerald-500 px-5 py-2 rounded-lg transition disabled:opacity-50"
-          >
-            {generating ? "Generating..." : "Generate New Report"}
-          </button>
-
-          <button
-            onClick={downloadPDF}
-            className="bg-indigo-600 hover:bg-indigo-500 transition px-5 py-2 rounded-lg"
-          >
-            Download PDF
-          </button>
-        </div>
-      </div>
-
-      {dashboard && (
-        <>
-          <h2 className="text-xl font-semibold">Executive Dashboard</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <ScoreCard label="Life Stability" value={dashboard.life_stability_index} />
-            <ScoreCard label="Financial Discipline" value={dashboard.financial_discipline_index} />
-            <ScoreCard label="Emotional Regulation" value={dashboard.emotional_regulation_index} />
-            <ScoreCard label="Dharma Alignment" value={dashboard.dharma_alignment_score} />
-            <ScoreCard label="Karma Pressure" value={dashboard.karma_pressure_index} />
+    <div className="premium-page">
+      <DashboardCard hover={false} className="relative overflow-hidden">
+        <div className="page-hero-glow" />
+        <div className="page-hero-mesh" />
+        <div className="relative z-10 flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-4xl">
+            <p className="sidebar-label text-slate-400">Report Detail</p>
+            <h1 className="section-title-premium mt-4">{report.title}</h1>
+            <p className="type-body mt-4 max-w-3xl">
+              Created {new Date(report.created_at).toLocaleString()} with confidence {report.confidence_score}. Engine version: {report.engine_version}.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <span className="premium-badge">{reportPlan}</span>
+              <span className="premium-badge">Confidence {report.confidence_score}</span>
+              <span className="premium-badge">{report.engine_version}</span>
+            </div>
           </div>
-        </>
-      )}
+
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap xl:w-auto xl:justify-end">
+            <AnimatedButton className="w-full sm:w-auto" variant="secondary" onClick={() => navigate("/generate-report")}>
+              Generate another
+            </AnimatedButton>
+            <AnimatedButton className="w-full sm:w-auto" onClick={downloadPDF} loading={downloading}>
+              {downloading ? "Preparing..." : reportPlan === "basic" ? "Preview PDF" : "Download PDF"}
+            </AnimatedButton>
+          </div>
+        </div>
+      </DashboardCard>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <StatCard label="Life Stability" value={coreMetrics?.life_stability_index ?? "--"} detail="Core metric from the latest report payload." />
+        <StatCard label="Decision Clarity" value={coreMetrics?.confidence_score ?? report.confidence_score} detail="Confidence signal returned by the report engine." />
+        <StatCard label="Dharma Alignment" value={coreMetrics?.dharma_alignment_score ?? "--"} detail="Strategic alignment score from the analysis." />
+        <StatCard label="Emotional Regulation" value={coreMetrics?.emotional_regulation_index ?? "--"} detail="Emotional steadiness and regulation score." />
+        <StatCard label="Financial Discipline" value={coreMetrics?.financial_discipline_index ?? "--"} detail="Financial discipline index pulled from report content." />
+      </section>
 
       {radarData.length > 0 && (
-        <RadarChartComponent data={radarData} />
+        <DashboardCard title="Life stability radar" description="A normalized visual comparison across the current report metrics.">
+          <RadarChartComponent data={radarData} />
+        </DashboardCard>
+      )}
+
+      <Section title="Executive brief">
+        <p className="type-body text-slate-200">
+          {executiveBrief?.summary ?? "No executive summary is available for this report yet."}
+        </p>
+        <div className="grid gap-4 md:grid-cols-3">
+          <InsightCard label="Key strength" value={executiveBrief?.key_strength ?? "Not available"} />
+          <InsightCard label="Key risk" value={executiveBrief?.key_risk ?? "Not available"} />
+          <InsightCard label="Strategic focus" value={executiveBrief?.strategic_focus ?? "Not available"} />
+        </div>
+      </Section>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <DetailGrid title="Analysis sections" data={report.content.analysis_sections} />
+        <DetailGrid title="Growth blueprint" data={report.content.growth_blueprint} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <DetailGrid title="Strategic guidance" data={report.content.strategic_guidance} />
+        <DetailGrid title="Archetype profile" data={report.content.numerology_archetype} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <DetailGrid title="Pythagorean core" data={numerologyCore?.pythagorean} />
+        <DetailGrid
+          title="Supportive numerology"
+          data={{
+            ...(numerologyCore?.chaldean ?? {}),
+            ...(numerologyCore?.email_analysis ?? {}),
+            ...(numerologyCore?.name_correction ?? {}),
+          }}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <DetailGrid title="Lifestyle remedies" data={report.content.lifestyle_remedies} />
+        <DetailGrid title="Mobile remedies" data={report.content.mobile_remedies} />
+        <DetailGrid title="Vedic remedies" data={report.content.vedic_remedies} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <DetailGrid title="Business insights" data={report.content.business_block} />
+        <DetailGrid title="Compatibility" data={report.content.compatibility_block} />
+      </div>
+
+      {report.content.disclaimer?.note && (
+        <DashboardCard compact title="Disclaimer" description="Advisory note returned by the backend.">
+          <p className="type-body">{report.content.disclaimer.note}</p>
+        </DashboardCard>
       )}
     </div>
   );
 }
 
-function ScoreCard({ label, value }: { label: string; value?: number }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return <DashboardCard title={title}>{children}</DashboardCard>;
+}
+
+function InsightCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-gray-900 p-6 rounded-xl shadow-md">
-      <p className="text-sm text-gray-400">{label}</p>
-      <p className="text-3xl font-bold mt-2">
-        {value ?? "--"}
-      </p>
+    <div className="section-soft p-4">
+      <p className="stat-label">{label}</p>
+      <p className="type-body mt-3 text-slate-200">{value}</p>
     </div>
   );
+}
+
+function DetailGrid({
+  title,
+  data,
+}: {
+  title: string;
+  data?: Record<string, unknown>;
+}) {
+  const entries = Object.entries(data ?? {}).filter(([, value]) => {
+    if (value === undefined || value === null || value === "") {
+      return false;
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    if (typeof value === "object") {
+      return Object.keys(value as Record<string, unknown>).length > 0;
+    }
+
+    return true;
+  });
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <DashboardCard title={title} compact>
+      <div className="grid gap-4 md:grid-cols-2">
+        {entries.map(([key, value]) => (
+          <div key={key} className="section-soft p-4">
+            <p className="stat-label">{formatLabel(key)}</p>
+            <p className="type-body mt-3 text-slate-200">{formatValue(value)}</p>
+          </div>
+        ))}
+      </div>
+    </DashboardCard>
+  );
+}
+
+function formatLabel(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => formatValue(item)).join(", ");
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "object" && value) {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, nestedValue]) => `${formatLabel(key)}: ${formatValue(nestedValue)}`)
+      .join(", ");
+  }
+
+  return String(value);
 }

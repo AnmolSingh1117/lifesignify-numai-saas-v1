@@ -1,9 +1,11 @@
 import API from "./api";
+import {
+  type ReportMetricsResponse,
+  type UsageSummary,
+  toUsageSummary,
+} from "../types/report";
 
-export const getUsage = async () => {
-  const res = await API.get("/users/me");
-  return {
-    reports_used: res.data.reports_used || 0,
-    reports_limit: res.data.reports_limit || 10,
-  };
+export const getUsage = async (): Promise<UsageSummary> => {
+  const res = await API.get<ReportMetricsResponse>("/reports/metrics/usage");
+  return toUsageSummary(res.data);
 };

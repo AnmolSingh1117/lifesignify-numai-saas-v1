@@ -4,19 +4,15 @@ export default function UsageProgress() {
   const { usage } = useUsage();
   if (!usage) return null;
 
-  const percent =
-    (usage.reports_used / usage.reports_limit) * 100;
+  const percent = usage.reports_limit > 0 ? (usage.reports_used / usage.reports_limit) * 100 : 0;
 
   return (
-    <div className="bg-gray-900 dark:bg-gray-800 p-6 rounded-xl">
-      <p className="text-sm text-gray-400 mb-2">
+    <div className="chart-shell p-5">
+      <p className="type-body mb-3">
         Usage: {usage.reports_used} / {usage.reports_limit}
       </p>
-      <div className="w-full bg-gray-700 rounded h-3">
-        <div
-          className="bg-indigo-600 h-3 rounded"
-          style={{ width: `${percent}%` }}
-        />
+      <div className="h-3 w-full overflow-hidden rounded-full bg-slate-950/80">
+        <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400" style={{ width: `${percent}%` }} />
       </div>
     </div>
   );

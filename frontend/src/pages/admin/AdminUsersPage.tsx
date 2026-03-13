@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import {
   fetchOrgUsers,
   deleteUser,
@@ -6,12 +7,13 @@ import {
   inviteUser,
 } from "../../services/adminService";
 import AdminUsersTable from "../../components/admin/AdminUsersTable";
+import AnimatedButton from "../../components/ui/AnimatedButton";
+import DashboardCard from "../../components/ui/DashboardCard";
+import PageHero from "../../components/ui/PageHero";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Invite state
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("user");
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -20,101 +22,98 @@ export default function AdminUsersPage() {
     try {
       const data = await fetchOrgUsers();
       setUsers(data);
-    } catch (error) {
-      console.error("Failed to fetch users");
+    } catch {
+      toast.error("Failed to fetch users");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadUsers();
+    void loadUsers();
   }, []);
 
   const handleDelete = async (id: number) => {
     try {
       await deleteUser(id);
-      loadUsers();
+      toast.success("User removed");
+      await loadUsers();
     } catch (err: any) {
-      alert(err?.response?.data?.detail || "Failed to delete user");
+      toast.error(err?.response?.data?.detail || "Failed to delete user");
     }
   };
 
   const handleRoleChange = async (id: number, role: string) => {
     try {
       await updateUserRole(id, role);
-      loadUsers();
+      toast.success("Role updated");
+      await loadUsers();
     } catch (err: any) {
-      alert(err?.response?.data?.detail || "Failed to update role");
+      toast.error(err?.response?.data?.detail || "Failed to update role");
     }
   };
 
   const handleInvite = async () => {
     if (!inviteEmail) {
-      alert("Email is required");
+      toast.error("Email is required");
       return;
     }
 
     setInviteLoading(true);
     try {
       const res = await inviteUser(inviteEmail, inviteRole);
-
-      alert(
-        `User invited successfully.\nTemporary password: ${res.temporary_password}`
-      );
-
+      toast.success(`User invited. Temporary password: ${res.temporary_password}`);
       setInviteEmail("");
       setInviteRole("user");
-      loadUsers();
+      await loadUsers();
     } catch (err: any) {
-      alert(err?.response?.data?.detail || "Failed to invite user");
+      toast.error(err?.response?.data?.detail || "Failed to invite user");
     } finally {
       setInviteLoading(false);
     }
   };
 
-  if (loading) {
-    return <div className="p-8 text-white">Loading users...</div>;
-  }
-
   return (
-    <div className="p-8">
-      <h1 className="text-2xl text-white mb-6">Organization Users</h1>
-
-      {/* Invite Section */}
-      <div className="bg-gray-900 p-4 rounded-xl mb-6 flex gap-4 items-center">
-        <input
-          type="email"
-          placeholder="Enter email"
-          value={inviteEmail}
-          onChange={(e) => setInviteEmail(e.target.value)}
-          className="bg-gray-800 px-4 py-2 rounded text-white w-64"
-        />
-
-        <select
-          value={inviteRole}
-          onChange={(e) => setInviteRole(e.target.value)}
-          className="bg-gray-800 px-4 py-2 rounded text-white"
-        >
-          <option value="user">User</option>
-          <option value="manager">Manager</option>
-          <option value="admin">Admin</option>
-        </select>
-
-        <button
-          onClick={handleInvite}
-          disabled={inviteLoading}
-          className="bg-indigo-600 px-6 py-2 rounded hover:bg-indigo-700"
-        >
-          {inviteLoading ? "Inviting..." : "Invite User"}
-        </button>
-      </div>
-
-      <AdminUsersTable
-        users={users}
-        onDelete={handleDelete}
-        onRoleChange={handleRoleChange}
+    <div className="premium-page">
+      <PageHero
+        eyebrow="Workspace / Admin / Users"
+        title="Manage organization members with one consistent admin surface."
+        description="Invite users, update roles, and review organization members without leaving the design system used across the rest of the dashboard."
+        badges={[`${users.length} members`, inviteRole]}
       />
+
+      <DashboardCard title="Invite user" description="Send an invite and assign an initial role.">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_180px_180px]">
+          <input
+            type="email"
+            placeholder="Enter email"
+            value={inviteEmail}
+            onChange={(event) => setInviteEmail(event.target.value)}
+            className="input"
+          />
+
+          <select
+            value={inviteRole}
+            onChange={(event) => setInviteRole(event.target.value)}
+            className="input"
+          >
+            <option value="user">User</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+
+          <AnimatedButton className="md:col-span-2 xl:col-span-1" onClick={handleInvite} loading={inviteLoading} fullWidth>
+            {inviteLoading ? "Inviting..." : "Invite User"}
+          </AnimatedButton>
+        </div>
+      </DashboardCard>
+
+      <DashboardCard
+        title="Organization users"
+        description={loading ? "Loading organization members." : "Review and manage access across the workspace."}
+      >
+        <AdminUsersTable users={users} onDelete={handleDelete} onRoleChange={handleRoleChange} />
+      </DashboardCard>
     </div>
   );
 }

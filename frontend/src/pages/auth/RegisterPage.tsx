@@ -1,10 +1,12 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, type ChangeEvent, type FormEvent } from "react";
+import { motion } from "framer-motion";
+import { Link, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+import AnimatedButton from "../../components/ui/AnimatedButton";
 import { useAuth } from "../../context/AuthContext";
 import API from "../../services/api";
-import toast from "react-hot-toast";
 
-const RegisterPage = () => {
+export default function RegisterPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -13,23 +15,15 @@ const RegisterPage = () => {
     email: "",
     password: "",
   });
-
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   };
 
-  const validatePassword = (password: string) => {
-    if (password.length < 6) {
-      return "Password must be at least 6 characters";
-    }
-    return null;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
     if (loading) return;
 
@@ -38,9 +32,8 @@ const RegisterPage = () => {
       return;
     }
 
-    const passwordError = validatePassword(form.password);
-    if (passwordError) {
-      toast.error(passwordError);
+    if (form.password.length < 6) {
+      toast.error("Password must be at least 6 characters");
       return;
     }
 
@@ -48,116 +41,132 @@ const RegisterPage = () => {
     const loadingToast = toast.loading("Creating account...");
 
     try {
-      // 1️⃣ Register
       await API.post("/users/register", form);
-
-      // 2️⃣ Auto login
       await login(form.email, form.password);
-
-      toast.success("Welcome to Life Signify NumAI 🚀", {
+      toast.success("Welcome to LifeSignify", { id: loadingToast });
+      navigate("/dashboard", { replace: true });
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Registration failed", {
         id: loadingToast,
       });
-
-      // 3️⃣ Redirect to dashboard
-      navigate("/dashboard");
-
-    } catch (error: any) {
-      toast.error(
-        error?.response?.data?.detail || "Registration failed",
-        { id: loadingToast }
-      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white p-6">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-gray-900 p-8 rounded-2xl w-full max-w-md shadow-xl space-y-6"
-      >
-        <div className="text-center">
-          <h1 className="text-3xl font-bold">
-            Create Organization Account
-          </h1>
-          <p className="text-gray-400 mt-2">
-            Start your Life Intelligence journey
-          </p>
+    <div className="register-page">
+      <div className="register-cosmic-bg" aria-hidden>
+        <div className="register-orbit register-orbit-1" />
+        <div className="register-orbit register-orbit-2" />
+        <div className="register-orbit register-orbit-3" />
+
+        <div className="register-number-grid">
+          <span>1</span>
+          <span>2</span>
+          <span>3</span>
+          <span>4</span>
+          <span>5</span>
+          <span>6</span>
+          <span>7</span>
+          <span>8</span>
+          <span>9</span>
         </div>
 
-        {/* Organization */}
-        <div>
-          <label className="text-sm text-gray-400">
-            Organization Name
-          </label>
-          <input
-            name="organization_name"
-            value={form.organization_name}
-            onChange={handleChange}
-            className="w-full mt-1 p-3 bg-gray-800 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Your Company Name"
-          />
-        </div>
+        <span className="register-digit register-digit-3">3</span>
+        <span className="register-digit register-digit-7">7</span>
+        <span className="register-digit register-digit-9">9</span>
+        <span className="register-digit register-digit-11">11</span>
+        <span className="register-digit register-digit-22">22</span>
+        <span className="register-digit register-digit-33">33</span>
 
-        {/* Email */}
-        <div>
-          <label className="text-sm text-gray-400">Email</label>
-          <input
-            name="email"
-            type="email"
-            value={form.email}
-            onChange={handleChange}
-            className="w-full mt-1 p-3 bg-gray-800 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="you@example.com"
-          />
-        </div>
+        <span className="register-particle register-particle-1" />
+        <span className="register-particle register-particle-2" />
+        <span className="register-particle register-particle-3" />
+        <span className="register-particle register-particle-4" />
+        <span className="register-particle register-particle-5" />
+        <span className="register-particle register-particle-6" />
+        <span className="register-particle register-particle-7" />
+        <span className="register-particle register-particle-8" />
+        <span className="register-particle register-particle-9" />
+        <span className="register-particle register-particle-10" />
+        <span className="register-particle register-particle-11" />
+        <span className="register-particle register-particle-12" />
+      </div>
 
-        {/* Password */}
-        <div>
-          <label className="text-sm text-gray-400">Password</label>
-          <div className="relative">
-            <input
-              name="password"
-              type={showPassword ? "text" : "password"}
-              value={form.password}
-              onChange={handleChange}
-              className="w-full mt-1 p-3 bg-gray-800 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-12"
-              placeholder="••••••••"
-            />
-
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 hover:text-white"
-            >
-              {showPassword ? "Hide" : "Show"}
-            </button>
-          </div>
-        </div>
-
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full p-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-semibold transition disabled:opacity-50"
+      <div className="register-shell">
+        <motion.form
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          onSubmit={handleSubmit}
+          className="register-card"
         >
-          {loading ? "Creating..." : "Register"}
-        </button>
+          <p className="register-kicker">New account</p>
+          <h1 className="register-title">Create organization account</h1>
+          <p className="register-copy">Build your team workspace, then drop directly into the dashboard after signup.</p>
 
-        {/* Login Link */}
-        <div className="text-center text-sm text-gray-400">
-          Already have an account?{" "}
-          <Link
-            to="/login"
-            className="text-indigo-400 hover:underline"
-          >
-            Login
-          </Link>
-        </div>
-      </form>
+          <div className="mt-6 space-y-4">
+            <div>
+              <label className="register-label">Organization name</label>
+              <input
+                name="organization_name"
+                value={form.organization_name}
+                onChange={handleChange}
+                className="register-input mt-2"
+                placeholder="Your company name"
+              />
+            </div>
+
+            <div>
+              <label className="register-label">Email</label>
+              <input
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                className="register-input mt-2"
+                placeholder="you@example.com"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="register-label">Password</label>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  className="text-[11px] uppercase tracking-[0.18em] text-slate-400 transition hover:text-white"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+              <input
+                name="password"
+                type={showPassword ? "text" : "password"}
+                value={form.password}
+                onChange={handleChange}
+                className="register-input mt-2"
+                placeholder="Choose a secure password"
+              />
+              <p className="register-hint mt-2">Minimum 6 characters.</p>
+            </div>
+          </div>
+
+          <div className="mt-7 space-y-4">
+            <AnimatedButton type="submit" loading={loading} fullWidth className="register-button">
+              {loading ? "Creating account..." : "Create account"}
+            </AnimatedButton>
+
+            <p className="register-footer">
+              Already have an account?{" "}
+              <Link to="/login" className="register-link">
+                Log in
+              </Link>
+            </p>
+          </div>
+        </motion.form>
+      </div>
     </div>
   );
-};
-
-export default RegisterPage;
+}

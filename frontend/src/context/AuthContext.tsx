@@ -1,10 +1,11 @@
-import {
+﻿import {
   createContext,
   useContext,
   useState,
   useEffect,
   useRef,
   useCallback,
+  type ReactNode,
 } from "react";
 import API from "../services/api";
 
@@ -28,37 +29,40 @@ interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
   const initialized = useRef(false);
-  const loadingUser = useRef(false); // prevents parallel calls
+  const loadingUser = useRef(false);
+
+  const clearSession = useCallback(() => {
+    localStorage.removeItem("access_token");
+    setUser(null);
+  }, []);
 
   const loadUser = useCallback(async () => {
-    if (loadingUser.current) return; // prevent duplicate calls
+    if (loadingUser.current) return;
     loadingUser.current = true;
 
     try {
-      const res = await API.get("/users/me");
-      setUser(res.data);
+      const response = await API.get("/users/me");
+      setUser(response.data);
     } catch {
-      localStorage.removeItem("access_token");
-      setUser(null);
+      clearSession();
     } finally {
       loadingUser.current = false;
     }
-  }, []);
+  }, [clearSession]);
 
   const initializeAuth = useCallback(async () => {
-    if (initialized.current) return; // StrictMode safe
+    if (initialized.current) return;
     initialized.current = true;
 
     const token = localStorage.getItem("access_token");
@@ -88,18 +92,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     localStorage.setItem("access_token", response.data.access_token);
-
     await loadUser();
   };
 
-  const logout = () => {
-    localStorage.removeItem("access_token");
-    setUser(null);
-    window.location.href = "/login";
+  const logout = async () => {
+    try {
+      await API.post("/logout", undefined, {
+        withCredentials: true,
+      });
+    } catch {
+      // Frontend stays resilient even if server-side logout is not implemented yet.
+    } finally {
+      clearSession();
+      window.location.href = "/login";
+    }
   };
 
   useEffect(() => {
-    initializeAuth();
+    void initializeAuth();
   }, [initializeAuth]);
 
   return (

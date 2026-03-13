@@ -1,206 +1,357 @@
-import { useEffect, useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import API from "../../services/api";
+import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+import InsightsSummaryChart from "../../components/charts/InsightsSummaryChart";
+import UsageOverviewChart from "../../components/charts/UsageOverviewChart";
+import AmbientBackground from "../../components/layout/AmbientBackground";
+import AnimatedButton from "../../components/ui/AnimatedButton";
+import DashboardCard from "../../components/ui/DashboardCard";
+import Skeleton from "../../components/ui/Skeleton";
+import StatCard from "../../components/ui/StatCard";
 import { useAuth } from "../../context/AuthContext";
 import { useUsage } from "../../context/UsageContext";
-import toast from "react-hot-toast";
-import { motion } from "framer-motion";
+import API from "../../services/api";
+import type { Report } from "../../types/report";
 
-interface RiskAnalysis {
-  burnout_risk?: number;
-  overall_risk_level?: string;
-  karma_pressure_level?: string;
-  financial_stress_probability?: number;
-}
+const revealTransition = { duration: 0.38, ease: [0.22, 1, 0.36, 1] as const };
+const heroLineVariants = {
+  hidden: { opacity: 0, y: 18 },
+  visible: (index: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.42,
+      delay: 0.08 + index * 0.08,
+      ease: [0.22, 1, 0.36, 1] as const,
+    },
+  }),
+};
 
-interface Report {
-  id: number;
-  created_at: string;
-  content: {
-    executive_dashboard?: {
-      life_stability_index?: number;
-    };
-    risk_analysis?: RiskAnalysis;
-  };
+function formatDateTime(value?: string | null) {
+  if (!value) return "Not available";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { usage } = useUsage();
   const navigate = useNavigate();
 
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const currentPlan =
-    user?.subscription?.plan_name?.toLowerCase() || "none";
-
-  const isActive = user?.subscription?.is_active ?? false;
-
-  const used = usage?.reports_used || 0;
-  const limit = usage?.reports_limit || 0;
-  const remaining = Math.max(limit - used, 0);
-
-  const usagePercent =
-    limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
-
-  const fetchReports = async () => {
-    try {
-      const res = await API.get("/reports/");
-      setReports(res.data);
-    } catch {
-      toast.error("Failed to fetch reports");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchReports();
+    const fetchReports = async () => {
+      try {
+        const response = await API.get<Report[]>("/reports/");
+        setReports(response.data);
+      } catch {
+        toast.error("Failed to fetch reports");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void fetchReports();
   }, []);
 
+  const currentPlan =
+    usage?.subscription_plan ||
+    user?.subscription?.plan_name ||
+    user?.organization?.plan ||
+    "basic";
+
+  const heroName = user?.organization?.name ?? user?.email?.split("@")[0] ?? "Operator";
   const latestReport = reports[0];
-  const risk = latestReport?.content?.risk_analysis;
+  const latestMetrics = latestReport?.content.core_metrics;
+  const latestBrief = latestReport?.content.executive_brief;
+  const numerologyCore = latestReport?.content.numerology_core?.pythagorean;
+
+  const used = usage?.reports_used ?? 0;
+  const limit = usage?.reports_limit ?? 0;
+  const remaining = usage?.reports_remaining ?? Math.max(limit - used, 0);
+  const totalReports = usage?.total_reports ?? reports.length;
+  const usagePercent = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
+  const luckyNumber = ((heroName.length + used + (latestReport?.confidence_score ?? 0)) % 9) + 1;
+
+  const widgetValues = [
+    { label: "Lucky Number", value: String(luckyNumber), detail: "Numerology formula" },
+    { label: "Today's Horoscope", value: "Growth day", detail: "Action + patience" },
+    { label: "Compatibility Score", value: `${Math.max(72, (latestReport?.confidence_score ?? 72) - 8)}%`, detail: "Love, marriage, business" },
+    { label: "Numerology Insights", value: `${(numerologyCore?.destiny_number ?? numerologyCore?.expression_number ?? luckyNumber).toString()}`, detail: "Destiny and expression" },
+    { label: "Recommended Gemstone", value: luckyNumber % 2 === 0 ? "Emerald" : "Yellow Sapphire", detail: "Based on current pattern" },
+  ];
+
+  const insightData = useMemo(
+    () => [
+      { label: "Stability", value: latestMetrics?.life_stability_index ?? 0 },
+      { label: "Dharma", value: latestMetrics?.dharma_alignment_score ?? 0 },
+      { label: "Emotion", value: latestMetrics?.emotional_regulation_index ?? 0 },
+      { label: "Finance", value: latestMetrics?.financial_discipline_index ?? 0 },
+    ],
+    [latestMetrics]
+  );
+
+  if (loading) {
+    return <DashboardSkeleton />;
+  }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-8 space-y-10">
+    <div className="premium-page">
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={revealTransition}
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+      >
+        <StatCard label="Total Reports" value={totalReports} detail="All generated reports returned by the existing backend endpoints." floatDelay={0} />
+        <StatCard label="Latest Confidence" value={latestReport?.confidence_score ?? 0} detail="Confidence score from the most recent executive brief." floatDelay={0.12} />
+        <StatCard label="Life Stability" value={latestMetrics?.life_stability_index ?? 0} detail="A premium readout of the latest core metrics block." floatDelay={0.24} />
+        <StatCard label="Dharma Alignment" value={latestMetrics?.dharma_alignment_score ?? 0} detail="Strategic fit surfaced directly from report content." floatDelay={0.36} />
+      </motion.section>
 
-      {/* HEADER */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">
-            Welcome back, {user?.email}
-          </h1>
-          <p className="text-gray-400 mt-1">
-            Your Life Intelligence Executive Dashboard
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <PlanBadge plan={currentPlan} />
-          <button
-            onClick={logout}
-            className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded-lg text-sm font-semibold transition"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-
-      {/* USAGE BAR */}
-      <div className="bg-gray-900 p-6 rounded-2xl shadow-lg">
-        <div className="flex justify-between text-sm mb-2">
-          <span>
-            Reports Used: {used} / {limit}
-          </span>
-          <span>{remaining} remaining</span>
-        </div>
-
-        <div className="w-full bg-gray-800 rounded-full h-3">
-          <div
-            className={`h-3 rounded-full transition-all ${
-              usagePercent > 80
-                ? "bg-red-500"
-                : usagePercent > 50
-                ? "bg-yellow-500"
-                : "bg-emerald-500"
-            }`}
-            style={{ width: `${usagePercent}%` }}
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...revealTransition, delay: 0.05 }}
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
+      >
+        {widgetValues.map((widget, index) => (
+          <WidgetCard
+            key={widget.label}
+            label={widget.label}
+            value={widget.value}
+            detail={widget.detail}
+            delay={index * 0.05}
           />
-        </div>
+        ))}
+      </motion.section>
+
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...revealTransition, delay: 0.08 }}
+        className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]"
+      >
+        <DashboardCard title="Report usage" description="A visual on consumed, remaining, and total report capacity for the current billing cycle." floating floatDelay={0.15}>
+          <UsageOverviewChart used={used} remaining={remaining} limit={limit} />
+        </DashboardCard>
+
+        <DashboardCard title="Insights summary" description="A compact comparison drawn from the latest report metrics block." floating floatDelay={0.3}>
+          <InsightsSummaryChart data={insightData} />
+        </DashboardCard>
+      </motion.section>
+
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...revealTransition, delay: 0.11 }}
+        className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]"
+      >
+        <DashboardCard className="relative overflow-hidden" hover={false} floating floatDelay={0.22}>
+          <AmbientBackground className="absolute inset-0 opacity-80" withParticles particleCount={12} />
+          <div className="relative">
+            <p className="section-kicker">Latest report summary</p>
+            <motion.h2
+              initial="hidden"
+              animate="visible"
+              className="dashboard-hero-title mt-4 text-white"
+            >
+              <motion.span custom={0} variants={heroLineVariants} className="block">
+                Welcome back,
+              </motion.span>
+              <motion.span custom={1} variants={heroLineVariants} className="hero-gradient-text mt-1 block">
+                {heroName}
+              </motion.span>
+            </motion.h2>
+
+            <p className="type-body mt-3 max-w-2xl">
+              {latestBrief?.summary ||
+                "Generate your first report to unlock executive summaries, score charts, and premium insight cards."}
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2.5">
+              <span className="premium-badge">{String(currentPlan).toUpperCase()} plan</span>
+              <span className="premium-badge">{remaining} reports left</span>
+              <span className="premium-badge">{Math.round(usagePercent)}% utilization</span>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <MiniKpi label="Reports used" value={`${used} / ${limit || 0}`} />
+              <MiniKpi label="Workspace" value={user?.organization?.name ?? "LifeSignify"} />
+              <MiniKpi label="Status" value={user?.subscription?.is_active ? "Active" : "Review"} />
+            </div>
+          </div>
+        </DashboardCard>
+
+        <DashboardCard
+          title="Latest delivery"
+          description={latestReport?.title ?? "No reports yet"}
+          action={<span className="premium-badge">{latestReport ? "Ready" : "Pending"}</span>}
+          floating
+          floatDelay={0.3}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MiniKpi label="Last updated" value={formatDateTime(latestReport?.updated_at ?? latestReport?.created_at)} />
+            <MiniKpi label="Confidence" value={latestReport ? String(latestReport.confidence_score) : "--"} />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <InsightCard label="Key strength" value={latestBrief?.key_strength} />
+            <InsightCard label="Key risk" value={latestBrief?.key_risk} />
+            <InsightCard label="Strategic focus" value={latestBrief?.strategic_focus} />
+          </div>
+        </DashboardCard>
+      </motion.section>
+
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...revealTransition, delay: 0.16 }}
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+      >
+        <ActionPanel
+          title={remaining > 0 ? "Create your next report" : "Usage limit reached"}
+          copy="Open the guided generation flow with premium frontend interactions while keeping the backend intake contract intact."
+          buttonLabel={remaining > 0 ? "Open generator" : "Manage billing"}
+          onClick={() => navigate(remaining > 0 ? "/generate-report" : "/billing")}
+          variant="primary"
+          floatDelay={0.08}
+        />
+        <ActionPanel
+          title="Review reports"
+          copy="Browse every generated report with richer cards, better spacing, and smoother hover behavior."
+          buttonLabel="Go to reports"
+          onClick={() => navigate("/reports")}
+          variant="secondary"
+          floatDelay={0.18}
+        />
+        <ActionPanel
+          title="Tune subscription"
+          copy="Compare plans, review payment history, and upgrade without changing the backend billing flow."
+          buttonLabel="Open billing"
+          onClick={() => navigate("/billing")}
+          variant="success"
+          floatDelay={0.28}
+        />
+      </motion.section>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="premium-page">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-32 rounded-[14px]" />
+        ))}
       </div>
 
-      {/* KPI CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <MetricCard
-          label="Total Reports"
-          value={loading ? "..." : reports.length}
-        />
-
-        <MetricCard
-          label="Latest Stability Score"
-          value={
-            latestReport?.content?.executive_dashboard
-              ?.life_stability_index ?? "--"
-          }
-        />
-
-        <MetricCard
-          label="Overall Risk Level"
-          value={risk?.overall_risk_level ?? "--"}
-        />
-
-        <MetricCard
-          label="Burnout Risk"
-          value={
-            risk?.burnout_risk !== undefined
-              ? `${risk.burnout_risk}%`
-              : "--"
-          }
-        />
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Skeleton className="h-[300px] rounded-[14px]" />
+        <Skeleton className="h-[300px] rounded-[14px]" />
       </div>
 
-      {/* ACTIONS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <Skeleton key={index} className="h-28 rounded-[14px]" />
+        ))}
+      </div>
 
-        {/* 🔥 Now only navigation — NOT API call */}
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          onClick={() => navigate("/generate-report")}
-          disabled={!isActive || limit <= 0 || used >= limit}
-          className="bg-indigo-600 hover:bg-indigo-500 p-6 rounded-xl font-semibold transition disabled:opacity-50"
-        >
-          {!isActive || limit <= 0
-            ? "No Active Plan"
-            : used >= limit
-            ? "Limit Reached"
-            : "Generate AI Report"}
-        </motion.button>
-
-        <Link
-          to="/reports"
-          className="bg-indigo-600 hover:bg-indigo-500 p-6 rounded-xl font-semibold text-center"
-        >
-          View All Reports
-        </Link>
-
-        {(!isActive || used >= limit) && (
-          <Link
-            to="/billing"
-            className="bg-emerald-600 hover:bg-emerald-500 p-6 rounded-xl font-semibold text-center"
-          >
-            Upgrade Plan
-          </Link>
-        )}
+      <div className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
+        <Skeleton className="h-[290px] rounded-[14px]" />
+        <Skeleton className="h-[290px] rounded-[14px]" />
       </div>
     </div>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: any }) {
+function WidgetCard({
+  label,
+  value,
+  detail,
+  delay,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  delay: number;
+}) {
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32, delay }}
+      whileHover={{ y: -4, boxShadow: "0 15px 40px rgba(0, 0, 0, 0.45)" }}
+      className="rounded-[14px] border border-white/10 bg-[rgba(15,23,42,0.6)] p-4 backdrop-blur-[16px]"
+    >
+      <p className="stat-label">{label}</p>
+      <p className="mt-2 text-[15px] font-semibold text-white">{value}</p>
+      <p className="mt-2 text-[12px] text-slate-400">{detail}</p>
+    </motion.article>
+  );
+}
+
+function MiniKpi({ label, value }: { label: string; value: string }) {
   return (
     <motion.div
-      whileHover={{ scale: 1.04 }}
-      className="bg-gray-900 p-6 rounded-2xl shadow-lg"
+      whileHover={{ y: -4, boxShadow: "0 18px 40px rgba(2, 6, 23, 0.28)" }}
+      className="rounded-[14px] border border-white/10 bg-black/20 p-3.5 backdrop-blur-xl"
     >
-      <p className="text-sm text-gray-400">{label}</p>
-      <p className="text-3xl font-bold mt-2">{value}</p>
+      <p className="stat-label">{label}</p>
+      <p className="mt-2 text-[15px] font-semibold text-white">{value}</p>
     </motion.div>
   );
 }
 
-function PlanBadge({ plan }: { plan: string }) {
+function InsightCard({ label, value }: { label: string; value?: string }) {
   return (
-    <div
-      className={`px-4 py-2 rounded-full text-sm font-semibold ${
-        plan === "premium"
-          ? "bg-purple-600"
-          : plan === "pro"
-          ? "bg-emerald-600"
-          : "bg-gray-700"
-      }`}
+    <motion.div
+      whileHover={{ y: -4, boxShadow: "0 18px 40px rgba(2, 6, 23, 0.26)" }}
+      className="rounded-[14px] border border-white/10 bg-black/15 p-3.5"
     >
-      {plan.toUpperCase()} PLAN
-    </div>
+      <p className="stat-label">{label}</p>
+      <p className="type-body mt-3 text-slate-300">
+        {value || "This insight will appear once a report is available."}
+      </p>
+    </motion.div>
   );
 }
+
+function ActionPanel({
+  title,
+  copy,
+  buttonLabel,
+  onClick,
+  variant,
+  floatDelay,
+}: {
+  title: string;
+  copy: string;
+  buttonLabel: string;
+  onClick: () => void;
+  variant: "primary" | "secondary" | "success";
+  floatDelay: number;
+}) {
+  return (
+    <DashboardCard hover floating floatDelay={floatDelay} className="flex h-full flex-col justify-between">
+      <div>
+        <p className="section-kicker">Quick action</p>
+        <h3 className="surface-title mt-4 text-white">{title}</h3>
+        <p className="type-body mt-4">{copy}</p>
+      </div>
+      <AnimatedButton className="mt-6 w-full" variant={variant} onClick={onClick}>
+        {buttonLabel}
+      </AnimatedButton>
+    </DashboardCard>
+  );
+}
+
+

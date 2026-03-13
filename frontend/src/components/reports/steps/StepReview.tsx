@@ -1,7 +1,24 @@
-export default function StepReview({ submit, prev }: any) {
+interface Props {
+  prev: () => void;
+  submit: () => void;
+  submitting?: boolean;
+  plan?: string;
+}
+
+export default function StepReview({
+  prev,
+  submit,
+  submitting,
+  plan,
+}: Props) {
   return (
-    <div>
-      <h2 className="text-xl font-semibold mb-6">Review & Generate</h2>
+    <div className="space-y-6">
+      <div>
+        <h2 className="surface-title mb-2 text-white">Review and Generate</h2>
+        <p className="type-body text-slate-400">
+          The final payload will be sent using the backend's current intake schema for the {plan?.toUpperCase() ?? "CURRENT"} plan.
+        </p>
+      </div>
 
       <div className="flex justify-between">
         <button onClick={prev} className="btn-secondary">
@@ -10,9 +27,10 @@ export default function StepReview({ submit, prev }: any) {
 
         <button
           onClick={submit}
-          className="bg-green-600 hover:bg-green-500 px-6 py-2 rounded-lg"
+          disabled={submitting}
+          className="btn-primary disabled:opacity-50"
         >
-          Generate Report
+          {submitting ? "Generating..." : "Generate Report"}
         </button>
       </div>
     </div>
